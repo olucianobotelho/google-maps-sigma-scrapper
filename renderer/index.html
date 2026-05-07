@@ -1,155 +1,336 @@
 <!DOCTYPE html>
-<html lang="id">
-
+<html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Sigma Google Maps Scraper</title>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sigma — Prospecção de Leads</title>
   <style>
+    :root {
+      --bg: #0a0a0a; --surface: #111; --surface2: #1a1a1a; --border: #222;
+      --text: #e0e0e0; --text2: #888; --accent: #6c5ce7; --accent2: #a29bfe;
+      --green: #00b894; --red: #e17055; --radius: 10px;
+      --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #0d0d0d;
-      font-family: 'Menlo', 'Consolas', monospace;
-      padding: 30px;
-      color: #e0e0e0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      background: var(--bg); color: var(--text);
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      height: 100vh; overflow: hidden; display: flex; flex-direction: column;
+    }
+    #titlebar {
+      height: 36px; background: var(--surface); display: flex; align-items: center;
+      padding: 0 8px; -webkit-app-region: drag; user-select: none;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #titlebar .tt { font-size: 12px; color: var(--text2); margin-left: 8px; }
+    #titlebar .wc { margin-left: auto; display: flex; -webkit-app-region: no-drag; }
+    #titlebar .wc button {
+      width: 36px; height: 28px; border: none; background: transparent;
+      color: var(--text2); cursor: pointer; font-size: 12px;
+      display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: var(--transition);
+    }
+    #titlebar .wc button:hover { background: var(--surface2); color: var(--text); }
+    #titlebar .wc .cls:hover { background: #e81123; color: #fff; }
+
+    #appContent { flex: 1; display: flex; overflow: hidden; }
+
+    /* Sidebar */
+    #sidebar {
+      width: 240px; background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    #sidebar .sh { padding: 16px; border-bottom: 1px solid var(--border); }
+    #sidebar .sh h3 { font-size: 13px; font-weight: 600; }
+    #sidebar nav { flex: 1; overflow-y: auto; }
+    #sidebar nav .ni {
+      padding: 10px 16px; cursor: pointer; display: flex; align-items: center;
+      gap: 8px; color: var(--text2); font-size: 12px;
+      transition: var(--transition); border-left: 2px solid transparent;
+    }
+    #sidebar nav .ni:hover { color: var(--text); background: var(--surface2); }
+    #sidebar nav .ni.act { color: var(--accent2); border-left-color: var(--accent); background: rgba(108,92,231,0.08); }
+    #sidebar nav .ni .nb { margin-left: auto; font-size: 10px; color: var(--text2); }
+    #sidebar nav .ni.all { font-weight: 600; border-bottom: 1px solid var(--border); font-size: 13px; }
+    #sidebar .sl { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; gap: 4px; }
+    #sidebar .sl button {
+      flex: 1; padding: 6px; border: 1px solid var(--border); background: transparent;
+      color: var(--text2); border-radius: 6px; cursor: pointer; font-size: 11px; transition: var(--transition);
+    }
+    #sidebar .sl button.act { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* Main */
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Search bar */
+    #searchBar { padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    #searchFields { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    #searchFields input {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 9px 12px; border-radius: 8px; font-size: 13px; outline: none; transition: var(--transition);
+      min-width: 0;
+    }
+    #searchFields input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108,92,231,0.12); }
+    #searchFields .in-niche { flex: 2; } #searchFields .in-neigh { flex: 2; } #searchFields .in-city { flex: 1; }
+    #searchFields .in-max { width: 60px; text-align: center; }
+    #searchActions { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      padding: 8px 16px; border: none; border-radius: 8px; font-size: 12px; font-weight: 500;
+      cursor: pointer; transition: var(--transition); display: flex; align-items: center; gap: 6px; white-space: nowrap;
+    }
+    .btn1 { background: var(--accent); color: #fff; } .btn1:hover { background: #5b4bd5; }
+    .btn2 { background: transparent; color: var(--text2); border: 1px solid var(--border); } .btn2:hover { background: var(--surface2); color: var(--text); }
+    .btn3 { background: transparent; color: var(--red); border: 1px solid var(--red); font-size: 12px; padding: 6px 12px; } .btn3:hover { background: rgba(225,112,85,0.1); }
+    .sp { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Queue panel */
+    #queuePanel { display: none; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    #queuePanel h4 { font-size: 12px; color: var(--text2); margin-bottom: 8px; }
+    #queueList { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; margin-bottom: 8px; }
+    .q-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--surface2); border-radius: 6px; font-size: 12px; }
+    .q-item span { flex: 1; }
+    .q-item button { background: none; border: none; color: var(--text2); cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
+    .q-item button:hover { color: var(--red); background: rgba(225,112,85,0.1); }
+
+    /* Filter bar */
+    #filterBar {
+      padding: 8px 20px; display: flex; gap: 10px; align-items: center;
+      background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #filterBar input, #filterBar select {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;
+    }
+    #filterBar input { flex: 1; }
+    #filterBar select { min-width: 130px; }
+
+    /* Stats */
+    #statsRow { padding: 12px 20px; display: flex; gap: 10px; flex-shrink: 0; }
+    .mstat {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 10px 14px; flex: 1; min-width: 90px; transition: var(--transition);
+    }
+    .mstat:hover { border-color: var(--accent); }
+    .mstat .lb { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+    .mstat .vl { font-size: 20px; font-weight: 700; }
+    .mstat .sb { font-size: 10px; color: var(--text2); }
+
+    /* Table */
+    #tableSection { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 0 20px 12px; }
+    #tableHdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-shrink: 0; }
+    #tableHdr h2 { font-size: 14px; font-weight: 500; }
+    #tableHdr .tact { display: flex; gap: 6px; }
+    #tableWrapper { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    #dataTable { width: 100%; border-collapse: collapse; font-size: 12px; }
+    #dataTable thead { position: sticky; top: 0; z-index: 2; }
+    #dataTable th {
+      background: var(--surface2); color: var(--text2); padding: 9px 10px; text-align: left;
+      font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border);
+    }
+    #dataTable td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    #dataTable tbody tr { transition: var(--transition); }
+    #dataTable tbody tr:hover { background: var(--surface2); }
+    #dataTable a { color: var(--accent2); text-decoration: none; }
+    #dataTable .rate { color: #fdcb6e; font-weight: 600; }
+
+    /* Terminal */
+    #tdr { border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    #tdr .tog { padding: 6px 20px; font-size: 11px; color: var(--text2); cursor: pointer; user-select: none; }
+    #tdr .tog:hover { color: var(--text); }
+    #tdr .cnt { max-height: 140px; overflow-y: auto; padding: 0 20px 8px; display: none; }
+    #tdr .cnt.v { display: block; }
+    #tdr pre { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #00ff9d; line-height: 1.5; white-space: pre-wrap; }
+
+    /* Toast */
+    #toastContainer { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 6px; }
+    .toast { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 12px; animation: toastIn 0.3s cubic-bezier(0.4,0,0.2,1); }
+    .toasts { border-left: 3px solid var(--green); } .toaste { border-left: 3px solid var(--red); }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+
+    .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 50px; color: var(--text2); }
+    .empty .ic { font-size: 36px; margin-bottom: 10px; opacity: 0.3; }
+
+    /* Splash screen */
+    #splash {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--bg); z-index: 9999;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      transition: opacity 0.5s ease;
+    }
+    #splash.hide { opacity: 0; pointer-events: none; }
+    #splash img { width: 220px; height: 220px; margin-bottom: 32px; animation: pulse 2.5s infinite; object-fit: contain; }
+    @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: 0.75; } }
+    #splash .loader {
+      width: 60px; height: 4px; background: #1a1a1a; border-radius: 2px; overflow: hidden;
+    }
+    #splash .loader::after {
+      content: ''; display: block; width: 40%; height: 100%;
+      background: var(--accent); border-radius: 2px;
+      animation: loading 1.4s ease infinite;
+    }
+    @keyframes loading { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+
+    /* Full-screen splash */
+    #splash .brand-text {
+      color: var(--text2); font-size: 13px; letter-spacing: 6px; text-transform: uppercase;
+      margin-top: -8px; margin-bottom: 28px; opacity: 0.5;
     }
 
-    h1 {
-      color: #f0f0f0;
-      text-align: center;
-      margin-bottom: 20px;
-      font-weight: 500;
-      letter-spacing: 0.5px;
-    }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 
-    input,
-    button {
-      padding: 8px 12px;
-      margin: 6px;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
+    /* Dashboard */
+    #dashboardView { display: none; flex: 1; overflow-y: auto; padding: 20px; }
+    #dashboardView.v { display: block; }
+    #dashboardView .dg { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    #dashboardView .dc {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px;
     }
+    #dashboardView .dc h4 { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    #dashboardView .dc .big { font-size: 32px; font-weight: 700; }
+    #dashboardView .bar-wrap { background: var(--surface2); border-radius: 4px; height: 6px; margin-top: 6px; overflow: hidden; }
+    #dashboardView .bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+    #dashboardView .cat-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+    #dashboardView .cat-row .cat-name { flex: 1; }
+    #dashboardView .cat-row .cat-count { color: var(--text2); font-size: 11px; }
+    #dashboardView .cat-row .cat-bar { flex: 2; }
+    #dashboardView .hist-item { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between; }
+    #dashboardView .hist-item .hq { color: var(--text); }
+    #dashboardView .hist-item .hc { color: var(--text2); }
 
-    input {
-      background: #222;
-      color: #fff;
-      border: 1px solid #444;
-    }
-
-    button {
-      cursor: pointer;
-      background: #444;
-      color: #fff;
-      transition: 0.2s;
-    }
-
-    button:hover {
-      background: #666;
-    }
-
-    #saveButtons {
-      margin-top: 10px;
-    }
-
-    #saveButtons button {
-      margin-right: 5px;
-    }
-
-    /* ======= Terminal Style ======= */
-    .terminal {
-      width: 90%;
-      max-width: 900px;
-      background: #111;
-      border-radius: 10px;
-      box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
-      overflow: hidden;
-      margin-top: 25px;
-    }
-
-    .terminal-header {
-      background: #2b2b2b;
-      padding: 8px 12px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .terminal-btn {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      display: inline-block;
-    }
-
-    .close {
-      background: #ff5f57;
-    }
-
-    .minimize {
-      background: #ffbd2e;
-    }
-
-    .maximize {
-      background: #28c940;
-    }
-
-    pre {
-      background: #000;
-      color: #00ff9d;
-      padding: 18px;
-      margin: 0;
-      font-size: 13px;
-      line-height: 1.5;
-      overflow-y: auto;
-      max-height: 450px;
-      text-shadow: 0 0 5px rgba(0, 255, 150, 0.4);
-    }
-
-    #clearFilesBtn {
-      background: #f44;
-      color: #fff;
-    }
-
-    #clearFilesBtn:hover {
-      background: #c22;
-    }
+    /* Rename modal */
+    #renameModal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+    #renameModal.v { display: flex; }
+    #renameModal .rm { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; min-width: 320px; }
+    #renameModal .rm h3 { margin-bottom: 12px; font-size: 14px; }
+    #renameModal .rm input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; outline: none; }
+    #renameModal .rm input:focus { border-color: var(--accent); }
+    #renameModal .rm .ra { display: flex; gap: 8px; justify-content: flex-end; }
   </style>
 </head>
-
 <body>
-  <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 20px;">
-    <img id="logo" src="sigma-logo.png" alt="Sigma Logo" style="width: 100px; height: 100px; object-fit: contain;">
-    <h1
-      style="margin: 0; font-size: 26px; font-weight: 500; color: #f0f0f0; letter-spacing: 0.5px; text-align: center;">
-      Sigma Google Maps Scraper
-    </h1>
-  </div>
 
-  <div>
-    <input type="text" id="query" placeholder="Cari apa...">
-    <input type="number" id="maxResults" value="10">
-    <button id="startBtn">🚀 Mulai Scrape</button>
-  </div>
+<div id="splash">
+  <img src="sigma-logo.png" alt="Sigma">
+  <div class="brand-text">Prospecção de Leads</div>
+  <div class="loader"></div>
+</div>
 
-  <div id="saveButtons" style="display:none;">
-    <button id="saveJsonBtn">💾 Simpan JSON</button>
-    <button id="saveCsvBtn">💾 Simpan CSV</button>
-    <button id="saveReportBtn">💾 Simpan Report</button>
-    <button id="clearFilesBtn">🗑️ Hapus File Lokal</button>
+<div id="titlebar">
+  <img src="sigma-logo.png" style="width:18px;height:18px;margin-left:4px;" alt="Sigma">
+  <span class="tt">Sigma</span>
+  <div class="wc">
+    <button id="btnMin">─</button><button id="btnMax">☐</button><button class="cls" id="btnClose">✕</button>
   </div>
+</div>
 
-  <div class="terminal">
-    <div class="terminal-header">
-      <span class="terminal-btn close"></span>
-      <span class="terminal-btn minimize"></span>
-      <span class="terminal-btn maximize"></span>
+<div id="appContent">
+<aside id="sidebar">
+  <div class="sh"><h3>Σ Sigma</h3></div>
+  <nav id="sideNav">
+    <div class="ni all act" data-search="__all__">📊 <span data-i18n="all_leads">Todos os leads</span><span class="nb" id="allCount">0</span></div>
+    <div class="ni" data-view="dashboard">📈 <span data-i18n="nav_dash">Dashboard</span></div>
+  </nav>
+  <div class="sl">
+    <button data-lang="pt-BR" class="act">PT</button><button data-lang="en">EN</button><button data-lang="es">ES</button>
+  </div>
+</aside>
+
+<div id="main">
+  <div id="searchBar">
+    <div id="searchFields">
+      <input class="in-niche" id="inNiche" data-i18n-placeholder="ph_niche" placeholder="Nicho (ex: Academia)">
+      <input class="in-neigh" id="inNeigh" data-i18n-placeholder="ph_neigh" placeholder="Bairro (ex: Paciência)">
+      <input class="in-city" id="inCity" value="Rio de Janeiro" data-i18n-placeholder="ph_city" placeholder="Cidade">
+      <input class="in-max" id="inMax" type="number" value="30" min="1">
     </div>
-    <pre id="output"></pre>
+    <div id="searchActions">
+      <button class="btn btn1" id="addQueueBtn">➕ <span data-i18n="add_queue">Adicionar à fila</span></button>
+      <button class="btn btn2" id="processBtn">▶️ <span data-i18n="process_queue">Processar fila</span></button>
+      <button class="btn btn2" id="cancelBtn" style="display:none;">⏹ <span data-i18n="cancel_btn">Cancelar</span></button>
+      <div class="sp" id="spinner" style="display:none;"></div>
+    </div>
   </div>
 
-  <script src="renderer.js"></script>
-</body>
+  <div id="queuePanel"><h4>📋 <span data-i18n="queue_title">Fila de pesquisas</span></h4><div id="queueList"></div></div>
 
+  <div id="filterBar">
+    <input id="filterText" data-i18n-placeholder="filter_ph" placeholder="Filtrar por nome, telefone, email, endereço...">
+    <select id="filterCategory"><option value="all" data-i18n="filter_cat">Todas categorias</option></select>
+    <select id="filterHas" data-i18n-title="filter_has_title" title="Filtrar por atributo">
+      <option value="all">Todos</option>
+      <option value="phone">📞 Com telefone</option>
+      <option value="website">🌐 Com site</option>
+      <option value="instagram">📷 Com Instagram</option>
+      <option value="email">✉️ Com email</option>
+    </select>
+  </div>
+
+  <div id="statsRow">
+    <div class="mstat"><div class="lb" data-i18n="st_total">Resultados</div><div class="vl" id="stTotal" style="color:var(--accent2);">0</div></div>
+    <div class="mstat"><div class="lb" data-i18n="st_phone">Com Telefone</div><div class="vl" id="stPhone" style="color:var(--green);">0</div><div class="sb" id="stPhonePct"></div></div>
+    <div class="mstat"><div class="lb" data-i18n="st_web">Com Site</div><div class="vl" id="stWeb" style="color:#74b9ff;">0</div><div class="sb" id="stWebPct"></div></div>
+    <div class="mstat"><div class="lb" data-i18n="st_ig">Com Instagram</div><div class="vl" id="stIg" style="color:#e056a0;">0</div><div class="sb" id="stIgPct"></div></div>
+    <div class="mstat"><div class="lb" data-i18n="st_email">Com Email</div><div class="vl" id="stEmail" style="color:#fdcb6e;">0</div><div class="sb" id="stEmailPct"></div></div>
+  </div>
+
+  <div id="tableSection">
+    <div id="tableHdr">
+      <h2 data-i18n="table_title">Leads capturados</h2>
+      <div class="tact">
+        <button class="btn btn2" id="renameSearchBtn" style="display:none;">✏️ <span data-i18n="rename">Renomear</span></button>
+        <button class="btn btn2" id="exportCsvBtn" style="display:none;">📥 CSV</button>
+        <button class="btn btn2" id="exportJsonBtn" style="display:none;">📥 JSON</button>
+        <button class="btn btn3" id="deleteSearchBtn" style="display:none;" data-i18n="del_search">Apagar</button>
+      </div>
+    </div>
+    <div id="tableWrapper">
+      <div class="empty" id="emptyState"><div class="ic">🗺️</div><p data-i18n="empty_hint">Monte sua fila de pesquisas e processe</p></div>
+      <table id="dataTable" style="display:none;">
+        <thead><tr>
+          <th>#</th><th data-i18n="col_name">Nome</th><th data-i18n="col_cat">Categoria</th>
+          <th data-i18n="col_rating">Nota</th><th data-i18n="col_rev">Reviews</th>
+          <th data-i18n="col_phone">Telefone</th><th data-i18n="col_web">Site</th>
+          <th data-i18n="col_ig">Instagram</th><th data-i18n="col_email">Email</th>
+          <th data-i18n="col_addr">Endereço</th>
+        </tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tdr">
+    <div class="tog" id="terminalToggle">▸ <span data-i18n="term_log">Log de execução</span></div>
+    <div class="cnt" id="terminalContent"><pre id="terminalOutput"></pre></div>
+  </div>
+
+  <div id="dashboardView">
+    <div id="dashGrid" class="dg"></div>
+    
+    <div class="dc" style="margin-bottom:12px;">
+      <h4 data-i18n="dash_categories">Categorias principais</h4>
+      <div id="dashCategories"></div>
+    </div>
+
+    <div class="dc">
+      <h4 data-i18n="dash_recent">Buscas recentes</h4>
+      <div id="dashRecent"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="toastContainer"></div>
+
+<div id="renameModal">
+  <div class="rm">
+    <h3 data-i18n="rename_title">Renomear pesquisa</h3>
+    <input id="renameInput" placeholder="Nome da pesquisa...">
+    <div class="ra">
+      <button class="btn btn2" id="renameCancel">Cancelar</button>
+      <button class="btn btn1" id="renameSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script src="renderer.js"></script>
+</body>
 </html>

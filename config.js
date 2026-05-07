@@ -1,0 +1,13 @@
+module.exports = {
+  CONCURRENT_TABS: 20,
+  PAGE_TIMEOUT: 60000,
+  ELEMENT_TIMEOUT: 20000,
+  SCROLL_DELAY: 2000,
+  INITIAL_WAIT: 3000,
+  HEADLESS: false,
+  SEARCH_DEPTH: 5,
+  MAX_RETRIES: 2,
+  SEARCH_VARIATIONS: [],
+  REQUEST_BLOCK_TYPES: [],
+  USER_AGENT: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+};

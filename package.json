@@ -1,24 +1,25 @@
 {
-  "name": "sigma-gmaps-scrapper",
+  "name": "sigma-gmaps-scraper",
   "version": "1.0.0",
-  "description": "A desktop Google Maps scraper built with Puppeteer + Electron",
+  "description": "Desktop Google Maps business data scraper built with Electron + Playwright",
   "main": "main.js",
-  "author": "Ferdy",
-  "license": "ISC",
+  "author": "Luciano Botelho",
+  "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "build:portable": "electron-builder --win portable"
   },
   "dependencies": {
-    "puppeteer": "^24.23.0"
+    "playwright": "^1.59.1"
   },
   "devDependencies": {
     "electron": "^38.2.1",
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.gmaps.scrapper",
-    "productName": "Sigma GMaps Scrapper",
+    "appId": "com.sigma.scraper",
+    "productName": "Sigma",
     "directories": {
       "output": "dist"
     },
@@ -26,18 +27,24 @@
       "main.js",
       "scraper.js",
       "preload.js",
-      "renderer.js",
-      "index.html",
+      "config.js",
       "utils/**/*",
       "assets/**/*",
       "renderer/**/*",
       "node_modules/**/*",
       "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
-      "!node_modules/.bin"
+      "!node_modules/.bin",
+      "!node_modules/playwright-core/node_modules",
+      "!node_modules/playwright/node_modules"
     ],
     "win": {
-      "target": "nsis",
+      "target": "portable",
       "icon": "assets/icon.ico"
-    }
+    },
+    "portable": {
+      "artifactName": "Sigma-Prospeccao.exe"
+    },
+    "asar": true,
+    "compression": "maximum"
   }
 }
