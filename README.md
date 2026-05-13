@@ -1,141 +1,217 @@
-# Sigma GMaps Scraper
+# 🎯 Sigma GMaps Scraper v2
 
-**Ferramenta desktop de prospecção de leads via Google Maps** — desenvolvida em **Electron + Playwright**. Extrai dados de estabelecimentos (nome, endereço, telefone, site, Instagram, e-mail, rating, avaliações, categorias, coordenadas) e exporta em **CSV** ou **JSON**.
+**Transforme o Google Maps na sua máquina de prospecção.**
 
----
-
-## 👤 Desenvolvido por
-
-**Luciano Botelho**
+O Sigma GMaps Scraper extrai automaticamente milhares de leads qualificados do Google Maps e dispara campanhas de WhatsApp diretamente do seu desktop — sem APIs pagas, sem servidores, sem complicação.
 
 ---
 
-## ⚠️ Aviso de Segurança do Windows (SmartScreen)
+## 🔥 Por que o Sigma?
 
-Este aplicativo **não possui assinatura digital da Microsoft**. Isso acontece porque a assinatura de código (code signing certificate) exige o pagamento de uma licença anual à Microsoft, que **não foi adquirida**.
+Enquanto ferramentas concorrentes cobram centenas de reais por mês para raspar dados públicos do Google, o Sigma faz isso **de graça, offline e sem limites**. Você controla tudo do seu próprio computador.
 
-Ao executar o `.exe` pela primeira vez, o Windows Defender SmartScreen exibirá uma mensagem como:
-
-> "O Windows protegeu o seu computador. O Microsoft Defender SmartScreen impediu a inicialização de um aplicativo não reconhecido."
-
-**Isso não significa que o app contém vírus** — significa apenas que ele não foi assinado digitalmente por uma autoridade reconhecida pela Microsoft.
-
-### Como executar mesmo assim:
-
-1. Clique em **"Mais informações"** (ou "More info") na tela de bloqueio
-2. Clique em **"Executar mesmo assim"** (ou "Run anyway")
-3. O aplicativo abrirá normalmente a partir da segunda execução
-
-> 💡 Após a primeira execução bem-sucedida, o Windows não exibirá mais esse aviso para este arquivo.
+| | Sigma GMaps Scraper | Ferramentas SaaS |
+|---|---|---|
+| Custo mensal | **Grátis** | R$ 200–600/mês |
+| Limite de buscas | **Ilimitado** | Planos restritivos |
+| Seus dados | **No seu PC** | No servidor deles |
+| Envio WhatsApp | **Integrado e gratuito** | Não incluso ou pago à parte |
 
 ---
 
-## 🎯 O que faz
+## 📦 O que vem no pacote
 
-O Sigma GMaps Scraper automatiza a extração de dados do Google Maps através de uma interface desktop com tema escuro. Permite buscar estabelecimentos por palavra-chave + bairro + cidade, raspar páginas de detalhes e gerar arquivos de exportação.
+### 🔍 Raspagem Inteligente do Google Maps
+- Busca por **nicho + bairro + cidade** com rolagem automática do feed
+- Extrai dezenas de dados por estabelecimento: nome, telefone, site, rating, avaliações, endereço, coordenadas, fotos
+- Visita o site de cada lead e extrai **e-mail e Instagram** automaticamente
+- Suporte a buscas paralelas e variações de termos para máxima cobertura
 
-**Funcionalidades principais:**
-- Raspagem de dados via navegador Chromium integrado (Playwright)
-- Fila de buscas — adicione múltiplas consultas e processe em sequência
-- Log em tempo real no estilo terminal
-- Dashboard com total de resultados, média de rating e categorias principais
-- Exportação CSV e JSON
+### 📊 Dashboard & Exportação
+- Dashboard em tempo real com total de leads, média de rating e categorias principais
+- Fila de buscas com processamento sequencial — configure e deixe rodando
 - Filtros por categoria e atributos (tem telefone, site, Instagram, e-mail)
-- Suporte a PT-BR, EN e ES
+- Exportação em **CSV** e **JSON** com um clique
+- Log estilo terminal para acompanhar cada etapa
 
-**Dados extraídos por estabelecimento:**
+### 💬 Sistema de Campanhas WhatsApp
+- **Conexão via WhatsApp Web** (biblioteca Baileys) — escaneie o QR Code e pronto
+- **Templates personalizados** — use `{{nome}}`, `{{empresa}}`, `{{telefone}}` para mensagens automáticas
+- **Campanhas programadas** — defina intervalo entre disparos, pause e retome quando quiser
+- **Monitoramento em tempo real** — acompanhe status de cada mensagem (enviada, falha, pendente)
+- **Auto-reconexão** — se a conexão cair, o Sigma reconecta sozinho e continua de onde parou
 
-| Campo | Descrição |
-|-------|-----------|
-| Nome | Nome do estabelecimento |
-| Endereço | Endereço completo |
-| Telefone | Número de telefone |
-| Site | Website do estabelecimento |
-| Instagram | Perfil do Instagram (extraído do site) |
-| E-mail | E-mail (extraído do site do estabelecimento) |
-| Rating | Nota de 1 a 5 estrelas |
-| Avaliações | Número total de avaliações |
-| Categoria | Categoria do estabelecimento |
-| Coordenadas | Latitude e longitude |
-| Fotos | URLs das fotos do Google Maps |
+### 🌎 Interface Profissional
+- Tema escuro com sidebar, cards de estatísticas e tabela de dados
+- **Multilíngue** — português, inglês e espanhol
+- Personalização da janela com arraste, botões customizados e ícone próprio
+- Notificações toast para ações importantes
 
 ---
 
-## 📂 Estrutura do Projeto
+## ⚙️ Requisitos Mínimos
 
-```
-sigma-gmaps-scraper/
-├── main.js                  # Processo principal do Electron — janela, IPC, arquivos
-├── preload.js               # Context bridge — APIs seguras para o renderer
-├── scraper.js               # Motor de raspagem — Playwright (Chromium)
-├── config.js                # Configurações (timeout, concorrência, etc.)
-├── index.js                 # Modo CLI standalone (dev/testes)
-├── utils/
-│   ├── autoScroll.js        # Scroll do feed de resultados
-│   ├── businessData.js      # Extração de dados da página de detalhes
-│   ├── csv.js               # Exportador CSV
-│   ├── report.js            # Relatório de qualidade dos dados (.txt)
-│   └── stats.js             # Calculadora de percentuais
-├── renderer/
-│   ├── index.html           # Interface gráfica completa
-│   ├── renderer.js          # Lógica do frontend — fila, dashboard, i18n
-│   └── sigma-logo.png       # Logo do app
-├── assets/
-│   └── icon.ico             # Ícone do app para Windows
-└── dist/                    # Build gerado (após npm run build)
-    └── Sigma-Prospeccao.exe # Executável portátil para Windows
-```
+| Componente | Mínimo |
+|---|---|
+| Sistema Operacional | Windows 10/11 (64-bit) ou Linux (64-bit) |
+| RAM | 4 GB (Chromium usa ~500 MB por instância) |
+| Espaço em disco | 500 MB livres |
+| Internet | Conexão estável (banda larga) |
+| Node.js | **Não necessário** — o app é portátil |
+
+> 💡 O app é **totalmente portátil** no Windows. Baixe, execute, use. Sem instalação.
 
 ---
 
-## ⚙️ Requisitos (para desenvolvedores)
+## 📏 Tamanho Estimado
 
-- **Node.js** v18+
-- **npm**
-- Windows (o build é configurado para Windows portable)
-- Conexão com internet
+| Plataforma | Download | Instalado |
+|---|---|---|
+| Windows (.exe portátil) | ~157 MB (ZIP) | ~500 MB |
+| Linux (tar.gz) | ~114 MB | ~450 MB |
+
+O tamanho é maior porque o app empacota um navegador **Chromium completo** (via Electron + Playwright) para realizar a raspagem de forma headless e confiável.
 
 ---
 
-## 🛠 Setup de Desenvolvimento
+## 🚀 Instalação
+
+### Windows
+
+1. Baixe o arquivo `Sigma-GMaps-Scraper-Windows-x64.zip` da [página de releases](https://github.com/olucianobotelho/google-maps-sigma-scrapper/releases)
+2. Extraia o ZIP em qualquer pasta
+3. Execute `Sigma GMaps Scraper.exe`
+
+> ⚠️ **Primeira execução:** O Windows SmartScreen pode bloquear o app por não ter assinatura digital (que custa ~R$ 2.000/ano). Clique em **"Mais informações" → "Executar mesmo assim"**. Após a primeira execução esse aviso não aparece mais.
+
+### Linux
+
+1. Baixe `sigma-gmaps-scraper-1.0.0.tar.gz` ou `Sigma-GMaps-Scraper-Linux-x64.zip`
+2. Extraia:
+   ```bash
+   tar -xzf sigma-gmaps-scraper-1.0.0.tar.gz
+   ```
+3. Execute:
+   ```bash
+   ./sigma-gmaps-scraper
+   ```
+
+---
+
+## 🎮 Guia Rápido
+
+### 1. Raspagem de Leads
+
+1. Abra o Sigma e vá para a aba **Extração**
+2. Preencha os campos:
+   - **Nicho** — ex: `restaurantes`, `clínicas`, `mecânicos`
+   - **Bairro** — ex: `Centro`, `Moema`
+   - **Cidade** — ex: `São Paulo`, `Rio de Janeiro`
+3. Defina o **número máximo de resultados** (recomendado: 20–50)
+4. Clique em **Adicionar à Fila** para múltiplas buscas
+5. Clique em **Iniciar Extração** e acompanhe no terminal
+6. Ao finalizar, exporte como **CSV** ou **JSON**
+
+### 2. Campanha WhatsApp
+
+1. Vá para a aba **WhatsApp** e clique em **Conectar**
+2. Escaneie o QR Code com seu WhatsApp
+3. Vá para **Campanhas** → **Nova Campanha**
+4. Selecione os leads da extração
+5. Escreva a mensagem usando templates:
+   ```
+   Olá {{nome}}! Vi que sua empresa {{empresa}} está no Google Maps.
+   Gostaria de oferecer nossos serviços para o telefone {{telefone}}.
+   ```
+6. Configure o **intervalo entre disparos** (recomendado: 30–60 segundos)
+7. Clique em **Iniciar Campanha** e monitore o progresso
+
+> ⚠️ Use com responsabilidade. O WhatsApp pode banir contas que enviam spam. Mantenha intervalos realistas e mensagens personalizadas.
+
+### 3. Templates de Mensagem
+
+| Variável | Substituição |
+|---|---|
+| `{{nome}}` | Nome do estabelecimento |
+| `{{empresa}}` | Nome do estabelecimento (alias) |
+| `{{telefone}}` | Telefone formatado |
+| `{{site}}` | Website |
+| `{{endereco}}` | Endereço completo |
+| `{{categoria}}` | Categoria do estabelecimento |
+| `{{rating}}` | Nota (1–5) |
+| `{{avaliacoes}}` | Número de avaliações |
+
+---
+
+## 📋 Dados Extraídos
+
+| Campo | Descrição | Exemplo |
+|---|---|---|
+| Nome | Nome do estabelecimento | `Restaurante Sabor & Arte` |
+| Endereço | Endereço completo | `Rua Augusta, 1500 - Consolação` |
+| Telefone | Número de telefone | `(11) 3124-5678` |
+| Website | Site do estabelecimento | `https://saborarte.com.br` |
+| E-mail | Extraído do site | `contato@saborarte.com.br` |
+| Instagram | Perfil extraído do site | `@saborarte` |
+| Rating | Nota de 1 a 5 estrelas | `4.7` |
+| Avaliações | Total de avaliações | `342` |
+| Categoria | Categoria principal | `Restaurante` |
+| Coordenadas | Latitude e longitude | `-23.5505, -46.6333` |
+| Fotos | URLs das fotos do Google Maps | — |
+
+---
+
+## 🆕 O que mudou da V1 para a V2
+
+| Recurso | V1 | V2 |
+|---|---|---|
+| **WhatsApp** | ❌ | ✅ Sistema completo de campanhas |
+| **Templates** | ❌ | ✅ Mensagens personalizadas com variáveis |
+| **Fila de buscas** | ❌ | ✅ Múltiplas consultas sequenciais |
+| **Dashboard** | ❌ | ✅ Estatísticas em tempo real |
+| **Filtros** | ❌ | ✅ Filtrar por atributos e categorias |
+| **i18n** | ❌ | ✅ PT-BR, EN, ES |
+| **CSS Tema Escuro** | Básico | ✅ Tema profissional completo |
+| **Linux** | ❌ | ✅ Binário nativo (.tar.gz) |
+| **E-mail / Instagram** | Básico | ✅ Extração otimizada do site |
+| **Janela customizada** | Padrão | ✅ Frame customizado, ícone, arraste |
+| **Notificações** | ❌ | ✅ Toast notifications |
+| **Monitoramento campanhas** | ❌ | ✅ Status em tempo real |
+| **Auto-reconexão** | ❌ | ✅ WhatsApp reconecta automaticamente |
+
+---
+
+## 🛠 Para Desenvolvedores
 
 ```bash
 git clone https://github.com/olucianobotelho/google-maps-sigma-scrapper.git
 cd sigma-gmaps-scraper
 npm install
+npm start          # modo desenvolvimento (Electron GUI)
+node index.js      # modo CLI standalone
 ```
 
-### Rodar em Desenvolvimento
+### Build
 
 ```bash
-# App Electron (GUI)
-npm start
-
-# Modo CLI (sem interface gráfica)
-node index.js
+npm run build:portable   # Windows (.exe portátil)
+npm run build:linux      # Linux (tar.gz)
 ```
 
-### Gerar Executável
+### Stack
 
-```bash
-npm run build
-```
-
-O `.exe` portátil será gerado em `dist/Sigma-Prospeccao.exe`.
-
----
-
-## 🎮 Guia de Uso
-
-1. Execute o `Sigma-Prospeccao.exe` (ignore o aviso do SmartScreen na primeira vez)
-2. Preencha os campos: **Nicho** + **Bairro** + **Cidade**
-3. Defina o número máximo de resultados
-4. Clique em **Iniciar Extração** ou **Adicionar à Fila** para processar depois
-5. Acompanhe o progresso no terminal integrado
-6. Ao finalizar, exporte como **JSON** ou **CSV**
+- **Electron** 38 — janela desktop nativa
+- **Playwright** — automação Chromium headless
+- **Baileys** (WhiskeySockets) — WhatsApp Web client
+- **QRCode** — geração de QR para auth WhatsApp
+- **ffmpeg-static** — processamento de mídia WhatsApp
 
 ---
 
 ## 📄 Licença
 
 MIT License — © 2025 Luciano Botelho
+
+---
+
+**Feito para vendedores, empreendedores e profissionais que querem leads — não desculpas.**
