@@ -3,208 +3,7 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sigma — Prospecção de Leads</title>
-  <style>
-    :root {
-      --bg: #0a0a0a; --surface: #111; --surface2: #1a1a1a; --border: #222;
-      --text: #e0e0e0; --text2: #888; --accent: #6c5ce7; --accent2: #a29bfe;
-      --green: #00b894; --red: #e17055; --radius: 10px;
-      --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: var(--bg); color: var(--text);
-      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-      height: 100vh; overflow: hidden; display: flex; flex-direction: column;
-    }
-    #titlebar {
-      height: 36px; background: var(--surface); display: flex; align-items: center;
-      padding: 0 8px; -webkit-app-region: drag; user-select: none;
-      border-bottom: 1px solid var(--border); flex-shrink: 0;
-    }
-    #titlebar .tt { font-size: 12px; color: var(--text2); margin-left: 8px; }
-    #titlebar .wc { margin-left: auto; display: flex; -webkit-app-region: no-drag; }
-    #titlebar .wc button {
-      width: 36px; height: 28px; border: none; background: transparent;
-      color: var(--text2); cursor: pointer; font-size: 12px;
-      display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: var(--transition);
-    }
-    #titlebar .wc button:hover { background: var(--surface2); color: var(--text); }
-    #titlebar .wc .cls:hover { background: #e81123; color: #fff; }
-
-    #appContent { flex: 1; display: flex; overflow: hidden; }
-
-    /* Sidebar */
-    #sidebar {
-      width: 240px; background: var(--surface); border-right: 1px solid var(--border);
-      display: flex; flex-direction: column; flex-shrink: 0;
-    }
-    #sidebar .sh { padding: 16px; border-bottom: 1px solid var(--border); }
-    #sidebar .sh h3 { font-size: 13px; font-weight: 600; }
-    #sidebar nav { flex: 1; overflow-y: auto; }
-    #sidebar nav .ni {
-      padding: 10px 16px; cursor: pointer; display: flex; align-items: center;
-      gap: 8px; color: var(--text2); font-size: 12px;
-      transition: var(--transition); border-left: 2px solid transparent;
-    }
-    #sidebar nav .ni:hover { color: var(--text); background: var(--surface2); }
-    #sidebar nav .ni.act { color: var(--accent2); border-left-color: var(--accent); background: rgba(108,92,231,0.08); }
-    #sidebar nav .ni .nb { margin-left: auto; font-size: 10px; color: var(--text2); }
-    #sidebar nav .ni.all { font-weight: 600; border-bottom: 1px solid var(--border); font-size: 13px; }
-    #sidebar .sl { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; gap: 4px; }
-    #sidebar .sl button {
-      flex: 1; padding: 6px; border: 1px solid var(--border); background: transparent;
-      color: var(--text2); border-radius: 6px; cursor: pointer; font-size: 11px; transition: var(--transition);
-    }
-    #sidebar .sl button.act { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-    /* Main */
-    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-
-    /* Search bar */
-    #searchBar { padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
-    #searchFields { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-    #searchFields input {
-      background: var(--bg); border: 1px solid var(--border); color: var(--text);
-      padding: 9px 12px; border-radius: 8px; font-size: 13px; outline: none; transition: var(--transition);
-      min-width: 0;
-    }
-    #searchFields input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108,92,231,0.12); }
-    #searchFields .in-niche { flex: 2; } #searchFields .in-neigh { flex: 2; } #searchFields .in-city { flex: 1; }
-    #searchFields .in-max { width: 60px; text-align: center; }
-    #searchActions { display: flex; gap: 8px; align-items: center; }
-    .btn {
-      padding: 8px 16px; border: none; border-radius: 8px; font-size: 12px; font-weight: 500;
-      cursor: pointer; transition: var(--transition); display: flex; align-items: center; gap: 6px; white-space: nowrap;
-    }
-    .btn1 { background: var(--accent); color: #fff; } .btn1:hover { background: #5b4bd5; }
-    .btn2 { background: transparent; color: var(--text2); border: 1px solid var(--border); } .btn2:hover { background: var(--surface2); color: var(--text); }
-    .btn3 { background: transparent; color: var(--red); border: 1px solid var(--red); font-size: 12px; padding: 6px 12px; } .btn3:hover { background: rgba(225,112,85,0.1); }
-    .sp { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* Queue panel */
-    #queuePanel { display: none; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface); }
-    #queuePanel h4 { font-size: 12px; color: var(--text2); margin-bottom: 8px; }
-    #queueList { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; margin-bottom: 8px; }
-    .q-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--surface2); border-radius: 6px; font-size: 12px; }
-    .q-item span { flex: 1; }
-    .q-item button { background: none; border: none; color: var(--text2); cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
-    .q-item button:hover { color: var(--red); background: rgba(225,112,85,0.1); }
-
-    /* Filter bar */
-    #filterBar {
-      padding: 8px 20px; display: flex; gap: 10px; align-items: center;
-      background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0;
-    }
-    #filterBar input, #filterBar select {
-      background: var(--surface); border: 1px solid var(--border); color: var(--text);
-      padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;
-    }
-    #filterBar input { flex: 1; }
-    #filterBar select { min-width: 130px; }
-
-    /* Stats */
-    #statsRow { padding: 12px 20px; display: flex; gap: 10px; flex-shrink: 0; }
-    .mstat {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 10px 14px; flex: 1; min-width: 90px; transition: var(--transition);
-    }
-    .mstat:hover { border-color: var(--accent); }
-    .mstat .lb { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
-    .mstat .vl { font-size: 20px; font-weight: 700; }
-    .mstat .sb { font-size: 10px; color: var(--text2); }
-
-    /* Table */
-    #tableSection { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 0 20px 12px; }
-    #tableHdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-shrink: 0; }
-    #tableHdr h2 { font-size: 14px; font-weight: 500; }
-    #tableHdr .tact { display: flex; gap: 6px; }
-    #tableWrapper { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-    #dataTable { width: 100%; border-collapse: collapse; font-size: 12px; }
-    #dataTable thead { position: sticky; top: 0; z-index: 2; }
-    #dataTable th {
-      background: var(--surface2); color: var(--text2); padding: 9px 10px; text-align: left;
-      font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border);
-    }
-    #dataTable td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); }
-    #dataTable tbody tr { transition: var(--transition); }
-    #dataTable tbody tr:hover { background: var(--surface2); }
-    #dataTable a { color: var(--accent2); text-decoration: none; }
-    #dataTable .rate { color: #fdcb6e; font-weight: 600; }
-
-    /* Terminal */
-    #tdr { border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
-    #tdr .tog { padding: 6px 20px; font-size: 11px; color: var(--text2); cursor: pointer; user-select: none; }
-    #tdr .tog:hover { color: var(--text); }
-    #tdr .cnt { max-height: 140px; overflow-y: auto; padding: 0 20px 8px; display: none; }
-    #tdr .cnt.v { display: block; }
-    #tdr pre { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #00ff9d; line-height: 1.5; white-space: pre-wrap; }
-
-    /* Toast */
-    #toastContainer { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 6px; }
-    .toast { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 12px; animation: toastIn 0.3s cubic-bezier(0.4,0,0.2,1); }
-    .toasts { border-left: 3px solid var(--green); } .toaste { border-left: 3px solid var(--red); }
-    @keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
-
-    .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 50px; color: var(--text2); }
-    .empty .ic { font-size: 36px; margin-bottom: 10px; opacity: 0.3; }
-
-    /* Splash screen */
-    #splash {
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: var(--bg); z-index: 9999;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      transition: opacity 0.5s ease;
-    }
-    #splash.hide { opacity: 0; pointer-events: none; }
-    #splash img { width: 220px; height: 220px; margin-bottom: 32px; animation: pulse 2.5s infinite; object-fit: contain; }
-    @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: 0.75; } }
-    #splash .loader {
-      width: 60px; height: 4px; background: #1a1a1a; border-radius: 2px; overflow: hidden;
-    }
-    #splash .loader::after {
-      content: ''; display: block; width: 40%; height: 100%;
-      background: var(--accent); border-radius: 2px;
-      animation: loading 1.4s ease infinite;
-    }
-    @keyframes loading { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
-
-    /* Full-screen splash */
-    #splash .brand-text {
-      color: var(--text2); font-size: 13px; letter-spacing: 6px; text-transform: uppercase;
-      margin-top: -8px; margin-bottom: 28px; opacity: 0.5;
-    }
-
-    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-
-    /* Dashboard */
-    #dashboardView { display: none; flex: 1; overflow-y: auto; padding: 20px; }
-    #dashboardView.v { display: block; }
-    #dashboardView .dg { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 20px; }
-    #dashboardView .dc {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px;
-    }
-    #dashboardView .dc h4 { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
-    #dashboardView .dc .big { font-size: 32px; font-weight: 700; }
-    #dashboardView .bar-wrap { background: var(--surface2); border-radius: 4px; height: 6px; margin-top: 6px; overflow: hidden; }
-    #dashboardView .bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
-    #dashboardView .cat-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
-    #dashboardView .cat-row .cat-name { flex: 1; }
-    #dashboardView .cat-row .cat-count { color: var(--text2); font-size: 11px; }
-    #dashboardView .cat-row .cat-bar { flex: 2; }
-    #dashboardView .hist-item { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between; }
-    #dashboardView .hist-item .hq { color: var(--text); }
-    #dashboardView .hist-item .hc { color: var(--text2); }
-
-    /* Rename modal */
-    #renameModal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
-    #renameModal.v { display: flex; }
-    #renameModal .rm { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; min-width: 320px; }
-    #renameModal .rm h3 { margin-bottom: 12px; font-size: 14px; }
-    #renameModal .rm input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; outline: none; }
-    #renameModal .rm input:focus { border-color: var(--accent); }
-    #renameModal .rm .ra { display: flex; gap: 8px; justify-content: flex-end; }
-  </style>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -224,10 +23,12 @@
 
 <div id="appContent">
 <aside id="sidebar">
-  <div class="sh"><h3>Σ Sigma</h3></div>
+  <div class="sh"><h3>Σ Sigma</h3><button id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Minimizar menu">◀</button></div>
   <nav id="sideNav">
-    <div class="ni all act" data-search="__all__">📊 <span data-i18n="all_leads">Todos os leads</span><span class="nb" id="allCount">0</span></div>
-    <div class="ni" data-view="dashboard">📈 <span data-i18n="nav_dash">Dashboard</span></div>
+    <div class="ni all act" data-search="__all__"><span class="nav-icon">📊</span><span class="nav-label" data-i18n="all_leads">Todos os leads</span><span class="nb" id="allCount">0</span></div>
+    <div class="ni" data-view="dashboard"><span class="nav-icon">📈</span><span class="nav-label" data-i18n="nav_dash">Dashboard</span></div>
+    <div class="ni" data-view="whatsapp"><span class="nav-icon">💬</span><span class="nav-label" data-i18n="nav_wa">WhatsApp</span><span class="nb" id="waStatusBadge" style="font-size:9px;">⚫</span></div>
+    <div class="ni" data-view="funnels"><span class="nav-icon">⚡</span><span class="nav-label">Funis</span></div>
   </nav>
   <div class="sl">
     <button data-lang="pt-BR" class="act">PT</button><button data-lang="en">EN</button><button data-lang="es">ES</button>
@@ -315,6 +116,24 @@
       <div id="dashRecent"></div>
     </div>
   </div>
+
+  <!-- WHATSAPP VIEW -->
+  <div id="whatsappView" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+    <div id="waTabs" style="display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;">
+      <button class="wa-tab act" data-wa="connect">🔌 <span data-i18n="wa_connect">Conexão</span></button>
+      <button class="wa-tab" data-wa="campaigns">📋 <span data-i18n="wa_campaigns">Campanhas</span></button>
+      <button class="wa-tab" data-wa="monitor">📊 <span data-i18n="wa_monitor">Monitor</span></button>
+      <button class="wa-tab" data-wa="chats">💬 <span data-i18n="wa_chats">Chats</span></button>
+      <button class="wa-tab" data-wa="settings">⚙️ <span>Configurações</span></button>
+    </div>
+    <div id="waConnectPanel" style="flex:1;overflow-y:auto;padding:20px;"></div>
+    <div id="waCampaignsPanel" style="display:none;flex:1;overflow-y:auto;padding:20px;"></div>
+    <div id="waMonitorPanel" style="display:none;flex:1;overflow-y:auto;padding:20px;"></div>
+    <div id="waChatsPanel" style="display:none;flex:1;overflow:hidden;"></div>
+    <div id="waSettingsPanel" style="display:none;flex:1;overflow-y:auto;padding:20px;"></div>
+  </div>
+
+  <div id="funnelsView" style="display:none;flex:1;overflow:hidden;"></div>
 </div>
 </div>
 
@@ -332,5 +151,10 @@
 </div>
 
 <script src="renderer.js"></script>
+<script src="whatsapp-panel.js"></script>
+<script src="template-editor.js"></script>
+<script src="campaign-create.js"></script>
+<script src="campaign-monitor.js"></script>
+<script src="whatsapp-chat.js"></script>
 </body>
 </html>

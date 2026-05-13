@@ -1,0 +1,35 @@
+Comandos e métodos principais do Baileys (socket)
+=================================================
+
+Abaixo, uma lista resumida dos métodos/eventos mais usados ao trabalhar com o Baileys (versão MD / @whiskeysockets/baileys).
+
+makeWASocket - Cria o socket principal e retorna o objeto de conexão com o WhatsApp.
+ev.on('messages.upsert') - Escuta novas mensagens recebidas ou atualizadas.
+ev.on('connection.update') - Escuta mudanças de conexão (conectando, conectado, desconectado).
+sendMessage - Envia mensagem de texto, mídia, botões, listas ou outros tipos de conteúdo.
+readMessages - Marca mensagens como lidas.
+presenceSubscribe - Assina presença de um contato (online/digitando).
+sendPresenceUpdate - Atualiza seu status de presença (digitando, gravando, disponível).
+groupCreate - Cria um grupo novo.
+groupMetadata - Obtém metadados completos de um grupo (nome, participantes, etc.).
+groupUpdateSubject - Altera o nome/título do grupo.
+groupUpdateDescription - Altera a descrição do grupo.
+groupParticipantsUpdate - Adiciona, remove ou promove/rebaixa participantes do grupo.
+updateProfilePicture - Atualiza a foto de perfil de um contato ou grupo.
+updateProfileStatus - Atualiza o status de texto do perfil (se suportado).
+fetchBlocklist - Busca a lista de contatos bloqueados.
+updateBlockStatus - Bloqueia ou desbloqueia um número.
+onWhatsApp - Verifica se um número está registrado no WhatsApp.
+getBusinessProfile - Busca informações de perfil comercial (conta business).
+profilePictureUrl - Obtém a URL da foto de perfil de um contato ou grupo.
+fetchPrivacySettings - Obtém as configurações de privacidade da conta.
+updateLastSeenPrivacy - Atualiza quem pode ver seu último visto (se exposto pela versão).
+chatModify - Silencia, arquiva ou fixa conversas (quando disponível).
+resendMessage - Reenvia mensagens usando o conteúdo de uma mensagem existente.
+downloadContentFromMessage - Faz o streaming do conteúdo de mídia de uma mensagem (áudio, vídeo, imagem, documento).
+generateForwardMessageContent - Gera o conteúdo de uma mensagem encaminhada a partir de outra.
+generateWAMessageFromContent - Monta uma mensagem bruta a partir de um conteúdo customizado (proto).
+prepareWAMessageMedia - Prepara mídia (upload) antes de enviar via sendMessage.
+logout - Desloga a sessão atual do WhatsApp.
+end - Fecha o socket atual (encerrar conexão).
+ws.close - Fecha a conexão WebSocket subjacente (quando acessível).

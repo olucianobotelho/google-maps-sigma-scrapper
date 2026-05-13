@@ -1,2 +1,6 @@
 node_modules
-dist/win-unpacked/
+dist/
+campaign-data/
+whatsapp-auth/
+.commandcode/
+*.exe
