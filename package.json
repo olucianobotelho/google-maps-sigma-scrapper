@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "build:portable": "electron-builder --win portable",
+    "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux"
   },
   "dependencies": {
@@ -46,7 +46,7 @@
       "!node_modules/playwright/node_modules"
     ],
     "win": {
-      "target": "portable",
+      "target": "zip",
       "icon": "assets/icon.ico"
     },
     "linux": {
@@ -56,9 +56,6 @@
       ],
       "icon": "assets/icon.png",
       "category": "Office"
-    },
-    "portable": {
-      "artifactName": "Sigma-Prospeccao.exe"
     },
     "asar": true,
     "compression": "maximum"
