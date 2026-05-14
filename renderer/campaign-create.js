@@ -171,7 +171,7 @@ function syncCampaignGroupState(searches, leads) {
     const groupLeads = leads.filter((l) => l.searchId === s.id);
     if (!campaignGroupState[s.id]) {
       campaignGroupState[s.id] = {
-        selectedIds: new Set(groupLeads.filter((l) => l.phone).map((l) => l.id)),
+        selectedIds: new Set(),
         filter: { field: "website", mode: "all", value: "" },
       };
       return;
