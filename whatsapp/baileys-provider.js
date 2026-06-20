@@ -1,5 +1,6 @@
 const { WhatsAppProvider } = require("./provider");
 const { AuthStore } = require("./auth-store");
+const { normalizePhone } = require("./phone-normalizer");
 const fs = require("fs");
 const path = require("path");
 
@@ -24,6 +25,8 @@ class BaileysProvider extends WhatsAppProvider {
     this._chatUpdateTimer = null;
     this._profilePicCache = {}; // Cache de fotos de perfil (jid -> url|null)
     this._dataPath = path.join(userDataPath, "sigma-chats.json");
+    this._mediaCacheRoot = path.join(userDataPath, "whatsapp-media-cache");
+    this._stickerCacheRoot = path.join(userDataPath, "whatsapp-stickers");
     this._syncStats = null;
     this._syncActive = false; // Flag to enable adaptive throttling during sync
   }
@@ -316,7 +319,7 @@ class BaileysProvider extends WhatsAppProvider {
                   unread: c.unreadCount || 0,
                   timestamp: c.conversationTimestamp || c.t || 0,
                   pinned: c.pinned || c.pin || 0,
-                  archived: !!c.archive,
+                  archived: this._getRawArchiveState(c, this._chats[c.id]),
                   isGroup,
                 };
               }
@@ -365,10 +368,7 @@ class BaileysProvider extends WhatsAppProvider {
                 existing?.timestamp ||
                 0,
               pinned: c.pinned || c.pin || existing?.pinned || 0,
-              archived:
-                c.archive !== undefined
-                  ? !!c.archive
-                  : existing?.archived || false,
+              archived: this._getRawArchiveState(c, existing),
               isGroup,
             };
           }
@@ -607,26 +607,71 @@ class BaileysProvider extends WhatsAppProvider {
       c.name = msg.pushName;
   }
 
+  _getChatMessageCount(jid) {
+    return (this._messages[jid] || []).filter((msg) => this._getMessageText(msg))
+      .length;
+  }
+
+  _safeCacheSegment(value) {
+    return String(value || "unknown").replace(/[^a-z0-9._-]+/gi, "_").slice(0, 96);
+  }
+
+  _ensureDir(dirPath) {
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+    } catch (e) {}
+  }
+
+  _guessMediaExtension(mimetype, fallback = ".bin") {
+    const type = String(mimetype || "").toLowerCase();
+    if (type.includes("jpeg") || type.includes("jpg")) return ".jpg";
+    if (type.includes("png")) return ".png";
+    if (type.includes("gif")) return ".gif";
+    if (type.includes("webp")) return ".webp";
+    if (type.includes("mp4")) return ".mp4";
+    if (type.includes("quicktime")) return ".mov";
+    if (type.includes("ogg") || type.includes("opus")) return ".ogg";
+    if (type.includes("mpeg")) return ".mp3";
+    if (type.includes("wav")) return ".wav";
+    if (type.includes("pdf")) return ".pdf";
+    if (type.includes("msword")) return ".doc";
+    if (type.includes("officedocument.wordprocessingml.document")) return ".docx";
+    return fallback;
+  }
+
+  _getMediaCachePath(jid, messageId, mimetype) {
+    const ext = this._guessMediaExtension(mimetype);
+    const safeJid = this._safeCacheSegment(jid);
+    const safeMsg = this._safeCacheSegment(messageId);
+    const dir = path.join(this._mediaCacheRoot, safeJid);
+    this._ensureDir(dir);
+    return path.join(dir, `${safeMsg}${ext}`);
+  }
+
   _hasConversationData(chat) {
     if (!chat) return false;
-    if ((this._messages[chat.jid] || []).length > 0) return true;
+    if (this._getChatMessageCount(chat.jid) > 0) return true;
     if (chat.lastMessage) return true;
     if ((chat.unread || 0) > 0) return true;
-    return (chat.timestamp || 0) > 0;
+    return false;
   }
 
   _shouldKeepChatRecord(raw, existing) {
     if (!raw?.id || raw.id.includes("@broadcast") || raw.id === "status@broadcast")
       return false;
-    if (raw.id.endsWith("@g.us")) return true;
     if (existing && this._hasConversationData(existing)) return true;
     return !!(
-      raw.conversationTimestamp ||
-      raw.t ||
       raw.unreadCount ||
       raw.lastMessage ||
-      raw.messages?.length
+      (Array.isArray(raw.messages) &&
+        raw.messages.some((msg) => this._getMessageText(msg)))
     );
+  }
+
+  _getRawArchiveState(raw, existing) {
+    if (raw?.archive !== undefined) return !!raw.archive;
+    if (raw?.archived !== undefined) return !!raw.archived;
+    return existing?.archived || false;
   }
 
   _rebuildMsgIndex() {
@@ -800,7 +845,10 @@ class BaileysProvider extends WhatsAppProvider {
   _toMessageJid(to) {
     if (!to) return "";
     if (String(to).includes("@")) return String(to);
-    const digits = String(to).replace(/\D/g, "");
+    const normalized = normalizePhone(String(to));
+    const digits = normalized.valid
+      ? normalized.number
+      : String(to).replace(/\D/g, "");
     return digits ? `${digits}@s.whatsapp.net` : String(to);
   }
 
@@ -954,10 +1002,11 @@ class BaileysProvider extends WhatsAppProvider {
         phoneJid: c.isGroup ? null : this._getPhoneJid(c.jid),
         profilePic: this._getCachedProfilePicture(c.jid),
         lastMessage: c.lastMessage || "",
-        unread: c.unread || 0,
+        unread: Number(c.unread || 0),
         timestamp: c.timestamp || 0,
         pinned: c.pinned || 0,
         isGroup: !!c.isGroup,
+        messageCount: this._getChatMessageCount(c.jid),
       }))
       .sort((a, b) => {
         if (a.pinned && !b.pinned) return -1;
@@ -980,11 +1029,12 @@ class BaileysProvider extends WhatsAppProvider {
         phoneJid: c.isGroup ? null : this._getPhoneJid(c.jid),
         profilePic: this._getCachedProfilePicture(c.jid),
         lastMessage: c.lastMessage || "",
-        unread: c.unread || 0,
+        unread: Number(c.unread || 0),
         timestamp: c.timestamp || 0,
         pinned: 0,
         archived: true,
         isGroup: !!c.isGroup,
+        messageCount: this._getChatMessageCount(c.jid),
       }))
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
   }
@@ -1102,8 +1152,8 @@ class BaileysProvider extends WhatsAppProvider {
       const jid = this._toMessageJid(to);
       if (content.text || content.caption)
         p.caption = content.text || content.caption;
-      if (content.image) p.image = content.image;
-      if (content.video) p.video = content.video;
+      if (content.image) { p.image = content.image; if (content.mimetype) p.mimetype = content.mimetype; }
+      if (content.video) { p.video = content.video; if (content.mimetype) p.mimetype = content.mimetype; }
       if (content.audio) {
         p.audio = content.audio;
         p.mimetype = content.mimetype || "audio/ogg";
@@ -1402,7 +1452,43 @@ class BaileysProvider extends WhatsAppProvider {
         mimetype = mc.videoMessage.mimetype || "video/mp4";
       else if (mc?.documentMessage)
         mimetype = mc.documentMessage.mimetype || "application/octet-stream";
-      return { success: true, data: base64, mimetype };
+      const filePath = this._getMediaCachePath(jid, messageId, mimetype);
+      try {
+        this._ensureDir(path.dirname(filePath));
+        fs.writeFileSync(filePath, buffer);
+      } catch (e) {}
+      return { success: true, data: base64, mimetype, filePath };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async saveStickerMedia(jid, messageId, label) {
+    try {
+      const media = await this.downloadMedia(jid, messageId);
+      if (!media.success) return media;
+      this._ensureDir(this._stickerCacheRoot);
+      const stickerId = this._safeCacheSegment(`sticker_${jid}_${messageId}`);
+      const stickerName = `${stickerId}.webp`;
+      const stickerPath = path.join(this._stickerCacheRoot, stickerName);
+      if (!fs.existsSync(stickerPath)) {
+        const src = media.filePath || "";
+        if (src && fs.existsSync(src)) {
+          fs.copyFileSync(src, stickerPath);
+        } else {
+          fs.writeFileSync(stickerPath, Buffer.from(media.data, "base64"));
+        }
+      }
+      return {
+        success: true,
+        sticker: {
+          id: stickerId,
+          name: label || messageId,
+          filePath: stickerPath,
+          mimetype: media.mimetype || "image/webp",
+          createdAt: Date.now(),
+        },
+      };
     } catch (e) {
       return { success: false, error: e.message };
     }

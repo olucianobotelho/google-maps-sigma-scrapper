@@ -1,6 +1,8 @@
 node_modules
 dist/
+dist-whatsapp-*/
 campaign-data/
 whatsapp-auth/
 .commandcode/
+gmaps-test/
 *.exe

@@ -24,10 +24,15 @@ class MetaProvider extends WhatsAppProvider {
         throw new Error(errBody.error?.message || `API returned ${resp.status}`);
       }
       this._status = 'connected';
+      this.authStore.saveMetaConfig({
+        phoneNumberId: this.phoneNumberId,
+        accessToken: this.accessToken,
+      });
       this.onStatus('connected');
     } catch (err) {
       this._status = 'error';
       this.onStatus('error', { error: `Failed to connect: ${err.message}` });
+      throw err;
     }
   }
 

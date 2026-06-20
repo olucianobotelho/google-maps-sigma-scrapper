@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -11,6 +11,16 @@ try {
 const { scrapeGoogleMaps } = require("./scraper");
 const { saveToCSV } = require("./utils/csv");
 const { saveReport } = require("./utils/report");
+const {
+  assertAllowedMediaPath,
+  assertConnectionId,
+  assertMaxBytes,
+  clampInteger,
+  createConnectionId,
+  isHttpUrl,
+  limitString,
+  resolveInside,
+} = require("./utils/security");
 const { WhatsAppProviderFactory } = require("./whatsapp/provider");
 const { normalizePhone } = require("./whatsapp/phone-normalizer");
 const { CampaignManager } = require("./campaigns/campaign-manager");
@@ -23,6 +33,339 @@ const whatsappProviders = new Map();
 let activeWhatsAppId = null;
 let campaignManager = null;
 const resultStore = new Map();
+const allowedMediaPaths = new Set();
+const activeScrapes = new Map();
+const defaultWhatsAppSettings = {
+  notifications: {
+    desktop: true,
+    sound: true,
+    showPreview: true,
+    notifyGroups: true,
+    quietHours: null,
+  },
+  media: {
+    autoDownloadImages: true,
+    autoDownloadAudio: true,
+    autoDownloadVideos: false,
+    autoDownloadDocuments: false,
+    autoDownloadStickers: true,
+    maxAutoDownloadBytes: 5 * 1024 * 1024,
+    cacheLimitBytes: 1024 * 1024 * 1024,
+  },
+  previews: {
+    links: true,
+    pdf: true,
+    videoPreloadBytes: 5 * 1024 * 1024,
+  },
+  groups: {
+    allowFunnels: false,
+    confirmFunnels: true,
+    allowCampaigns: false,
+    downloadPictures: true,
+  },
+};
+let cachedWhatsAppSettings = null;
+
+const MAX_SCRAPE_RESULTS = 1000;
+const MAX_QUERY_LENGTH = 200;
+const MAX_EXPORT_LEADS = 20000;
+const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
+const MAX_STICKER_BYTES = 5 * 1024 * 1024;
+
+function getSessionsRoot() {
+  return path.join(app.getPath("userData"), "whatsapp-sessions");
+}
+
+function resolveSessionPath(connectionId) {
+  return resolveInside(getSessionsRoot(), assertConnectionId(connectionId));
+}
+
+function rememberAllowedMediaPath(filePath) {
+  if (!filePath) return;
+  allowedMediaPaths.add(path.resolve(filePath));
+  saveAllowedMediaPaths();
+}
+
+function getAllowedMediaStorePath() {
+  return path.join(app.getPath("userData"), "allowed-media-paths.json");
+}
+
+function getWhatsAppSettingsPath() {
+  return path.join(app.getPath("userData"), "whatsapp-settings.json");
+}
+
+function loadWhatsAppSettings() {
+  if (cachedWhatsAppSettings) return cachedWhatsAppSettings;
+  try {
+    const filePath = getWhatsAppSettingsPath();
+    if (fs.existsSync(filePath)) {
+      const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      cachedWhatsAppSettings = {
+        ...defaultWhatsAppSettings,
+        ...raw,
+        notifications: { ...defaultWhatsAppSettings.notifications, ...(raw.notifications || {}) },
+        media: { ...defaultWhatsAppSettings.media, ...(raw.media || {}) },
+        previews: { ...defaultWhatsAppSettings.previews, ...(raw.previews || {}) },
+        groups: { ...defaultWhatsAppSettings.groups, ...(raw.groups || {}) },
+      };
+      return cachedWhatsAppSettings;
+    }
+  } catch (e) {}
+  cachedWhatsAppSettings = JSON.parse(JSON.stringify(defaultWhatsAppSettings));
+  return cachedWhatsAppSettings;
+}
+
+function saveWhatsAppSettings(nextSettings) {
+  cachedWhatsAppSettings = {
+    ...defaultWhatsAppSettings,
+    ...(nextSettings || {}),
+    notifications: {
+      ...defaultWhatsAppSettings.notifications,
+      ...((nextSettings || {}).notifications || {}),
+    },
+    media: {
+      ...defaultWhatsAppSettings.media,
+      ...((nextSettings || {}).media || {}),
+    },
+    previews: {
+      ...defaultWhatsAppSettings.previews,
+      ...((nextSettings || {}).previews || {}),
+    },
+    groups: {
+      ...defaultWhatsAppSettings.groups,
+      ...((nextSettings || {}).groups || {}),
+    },
+  };
+  try {
+    fs.writeFileSync(
+      getWhatsAppSettingsPath(),
+      JSON.stringify(cachedWhatsAppSettings, null, 2),
+      { mode: 0o600 },
+    );
+  } catch (e) {}
+  return cachedWhatsAppSettings;
+}
+
+function loadAllowedMediaPaths() {
+  try {
+    const storePath = getAllowedMediaStorePath();
+    if (!fs.existsSync(storePath)) return;
+    const paths = JSON.parse(fs.readFileSync(storePath, "utf-8"));
+    if (Array.isArray(paths)) {
+      paths.filter((p) => typeof p === "string").forEach((p) => allowedMediaPaths.add(path.resolve(p)));
+    }
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function saveAllowedMediaPaths() {
+  if (!app.isReady()) return;
+  try {
+    const paths = [...allowedMediaPaths].slice(-1000);
+    fs.writeFileSync(getAllowedMediaStorePath(), JSON.stringify(paths, null, 2), { mode: 0o600 });
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function resolveSelectedMediaPath(filePath, maxBytes, label) {
+  const resolved = assertAllowedMediaPath(filePath, allowedMediaPaths);
+  const stat = fs.statSync(resolved);
+  if (!stat.isFile()) throw new Error("Selected path is not a file");
+  assertMaxBytes(stat.size, maxBytes, label);
+  return resolved;
+}
+
+function sanitizeTemplate(template) {
+  if (typeof template === "string") {
+    return limitString(template, 4096);
+  }
+  const input = template && typeof template === "object" ? template : {};
+  const output = {
+    text: limitString(input.text, 4096),
+    variables: Array.isArray(input.variables)
+      ? input.variables.map((v) => limitString(v, 40)).slice(0, 50)
+      : [],
+  };
+  if (input.header) output.header = limitString(input.header, 512);
+  if (input.footer) output.footer = limitString(input.footer, 512);
+  if (Array.isArray(input.buttons)) {
+    output.buttons = input.buttons.slice(0, 3).map((button, index) => ({
+      id: limitString(button.id || button.buttonId || `btn_${index + 1}`, 64),
+      text: limitString(button.text || button.buttonText, 80),
+    }));
+  }
+  if (input.media && input.media.filePath) {
+    const mediaPath = resolveSelectedMediaPath(input.media.filePath, MAX_MEDIA_BYTES, "Media file");
+    output.media = {
+      filePath: mediaPath,
+      fileName: path.basename(mediaPath),
+      mimetype: limitString(input.media.mimetype, 120),
+      ptt: !!input.media.ptt,
+    };
+  }
+  return output;
+}
+
+function sanitizeCampaignData(data) {
+  const input = data && typeof data === "object" ? data : {};
+  const leads = Array.isArray(input.leadIds) ? input.leadIds.slice(0, 5000) : [];
+  const normalizedLeads = leads
+    .map((lead) => {
+      const rawPhone = typeof lead === "object" ? lead.phone : lead;
+      const normalized = normalizePhone(rawPhone);
+      if (!normalized.valid) return null;
+      if (typeof lead !== "object") {
+        return { leadId: normalized.number, phone: normalized.number, phoneRaw: rawPhone };
+      }
+      return {
+        ...lead,
+        phone: normalized.number,
+        phoneRaw: rawPhone,
+      };
+    })
+    .filter(Boolean);
+  if (!normalizedLeads.length) {
+    throw new Error("No valid phone numbers in campaign");
+  }
+  const intervalMs = clampInteger(input.schedule?.intervalMs, 5000, 60 * 60 * 1000, 30000);
+  return {
+    ...input,
+    id: input.id ? limitString(input.id, 80) : undefined,
+    name: limitString(input.name, 160, "Campanha"),
+    provider: input.provider === "meta" ? "meta" : "baileys",
+    connectionId: input.connectionId ? assertConnectionId(input.connectionId) : null,
+    template: sanitizeTemplate(input.template),
+    leadIds: normalizedLeads,
+    schedule: {
+      mode: ["immediate", "interval", "scheduled"].includes(input.schedule?.mode)
+        ? input.schedule.mode
+        : "interval",
+      intervalMs,
+      startAt: Number.isFinite(Number(input.schedule?.startAt))
+        ? Number(input.schedule.startAt)
+        : null,
+      workingHours: input.schedule?.workingHours || null,
+    },
+  };
+}
+
+function sanitizeCampaignUpdates(updates) {
+  const input = updates && typeof updates === "object" ? { ...updates } : {};
+  if (input.connectionId) input.connectionId = assertConnectionId(input.connectionId);
+  if (input.template) input.template = sanitizeTemplate(input.template);
+  if (input.media && input.media.filePath) {
+    const mediaPath = resolveSelectedMediaPath(input.media.filePath, MAX_MEDIA_BYTES, "Media file");
+    input.media = { ...input.media, filePath: mediaPath, fileName: path.basename(mediaPath) };
+  }
+  if (input.name) input.name = limitString(input.name, 160);
+  if (input.status && !["ready", "scheduled", "running", "paused", "completed", "cancelled"].includes(input.status)) {
+    throw new Error("Invalid campaign status");
+  }
+  return input;
+}
+
+function mergeWhatsAppSettingsPatch(base, patch) {
+  const input = patch && typeof patch === "object" ? patch : {};
+  return {
+    ...base,
+    ...input,
+    notifications: {
+      ...base.notifications,
+      ...(input.notifications || {}),
+    },
+    media: {
+      ...base.media,
+      ...(input.media || {}),
+    },
+    previews: {
+      ...base.previews,
+      ...(input.previews || {}),
+    },
+    groups: {
+      ...base.groups,
+      ...(input.groups || {}),
+    },
+  };
+}
+
+function getStickerStorePath() {
+  return path.join(app.getPath("userData"), "whatsapp-stickers.json");
+}
+
+function loadStickerStore() {
+  try {
+    const filePath = getStickerStorePath();
+    if (!fs.existsSync(filePath)) return [];
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    return Array.isArray(raw)
+      ? raw.filter((item) => item?.filePath && fs.existsSync(item.filePath))
+      : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveStickerStore(stickers) {
+  try {
+    fs.writeFileSync(
+      getStickerStorePath(),
+      JSON.stringify(Array.isArray(stickers) ? stickers : [], null, 2),
+      { mode: 0o600 },
+    );
+  } catch (e) {}
+}
+
+async function fetchLinkPreview(url) {
+  if (!isHttpUrl(url)) throw new Error("Invalid URL");
+  const res = await fetch(url, {
+    redirect: "follow",
+    headers: {
+      "user-agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    },
+  });
+  const html = await res.text();
+  const attr = (tag, name) => {
+    const match = tag.match(new RegExp(`${name}=["']([^"']+)["']`, "i"));
+    return match ? match[1].trim() : "";
+  };
+  const pickMeta = (key, value) => {
+    const tags = html.match(/<meta\b[^>]*>/gi) || [];
+    for (const tag of tags) {
+      if (attr(tag, key).toLowerCase() === value.toLowerCase()) {
+        return attr(tag, "content");
+      }
+    }
+    return "";
+  };
+  const pickTitle = () => {
+    const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    return match ? match[1].trim() : "";
+  };
+  const title =
+    pickMeta("property", "og:title") ||
+    pickMeta("name", "twitter:title") ||
+    pickTitle();
+  const description =
+    pickMeta("property", "og:description") ||
+    pickMeta("name", "twitter:description") ||
+    pickMeta("name", "description");
+  const image = pickMeta("property", "og:image") || pickMeta("name", "twitter:image");
+  const siteName = pickMeta("property", "og:site_name");
+  return {
+    success: true,
+    url,
+    title: limitString(title, 180),
+    description: limitString(description, 240),
+    image: limitString(image, 1024),
+    siteName: limitString(siteName, 120),
+    host: new URL(url).host,
+  };
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -38,9 +381,30 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
     },
   });
   mainWindow.loadFile(path.join(__dirname, "renderer/index.html"));
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isHttpUrl(url)) shell.openExternal(url).catch(() => {});
+    return { action: "deny" };
+  });
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    const currentUrl = mainWindow.webContents.getURL();
+    if (url !== currentUrl) {
+      event.preventDefault();
+      if (isHttpUrl(url)) shell.openExternal(url).catch(() => {});
+    }
+  });
+  mainWindow.webContents.session.setPermissionRequestHandler(
+    (webContents, permission, callback) => {
+      const allowed =
+        webContents === mainWindow.webContents &&
+        ["media", "notifications"].includes(permission);
+      callback(allowed);
+    },
+  );
 
   mainWindow.on("maximize", () =>
     mainWindow?.webContents.send("win-state", true),
@@ -52,6 +416,8 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+  loadAllowedMediaPaths();
+  loadWhatsAppSettings();
   cleanOldTempFiles();
   campaignManager = new CampaignManager(app.getPath("userData"));
   campaignManager.setProgressCallback((campaignId, event, data) => {
@@ -70,12 +436,17 @@ app.whenReady().then(() => {
 });
 
 async function autoReconnectSessions() {
-  const sessionsDir = path.join(app.getPath("userData"), "whatsapp-sessions");
+  const sessionsDir = getSessionsRoot();
   if (!fs.existsSync(sessionsDir)) return;
 
   let dirs;
   try {
     dirs = fs.readdirSync(sessionsDir).filter((d) => {
+      try {
+        assertConnectionId(d);
+      } catch (e) {
+        return false;
+      }
       const fullPath = path.join(sessionsDir, d);
       return (
         fs.statSync(fullPath).isDirectory() &&
@@ -155,7 +526,9 @@ async function cleanOldTempFiles() {
 
     for (const file of files) {
       if (
-        file.startsWith("gmaps_") &&
+        (file.startsWith("gmaps_") ||
+          file.startsWith("sigma_leads_") ||
+          file.startsWith("campaign_")) &&
         (file.endsWith(".json") ||
           file.endsWith(".csv") ||
           file.endsWith(".txt"))
@@ -178,9 +551,20 @@ function sendProgress(msg) {
 
 // ─── START SCRAPE ──────────────────────────
 ipcMain.handle("start-scrape", async (_, { query, maxResults, queryId }) => {
+  const cleanQuery = limitString(query, MAX_QUERY_LENGTH).trim();
+  const cleanMaxResults = clampInteger(maxResults, 1, MAX_SCRAPE_RESULTS, 30);
+  const key = limitString(queryId, 80, "") || `scrape_${Date.now()}`;
+  const cancelToken = { cancelled: false };
+  activeScrapes.set(key, cancelToken);
   try {
-    sendProgress(`Starting scrape for: ${query}`);
-    const result = await scrapeGoogleMaps(query, maxResults, sendProgress);
+    if (!cleanQuery) throw new Error("Query is required");
+    sendProgress(`Starting scrape for: ${cleanQuery}`);
+    const result = await scrapeGoogleMaps(
+      cleanQuery,
+      cleanMaxResults,
+      sendProgress,
+      cancelToken,
+    );
     let data = result.data || [];
 
     // Deduplicate by name+address
@@ -195,7 +579,7 @@ ipcMain.handle("start-scrape", async (_, { query, maxResults, queryId }) => {
     sendProgress(`After dedup: ${data.length} unique results.`);
 
     const timestamp = Date.now();
-    const safeQuery = query.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+    const safeQuery = cleanQuery.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "") || "query";
     const base = `gmaps_${safeQuery}_${timestamp}`;
 
     const userDataPath = app.getPath("userData");
@@ -210,9 +594,9 @@ ipcMain.handle("start-scrape", async (_, { query, maxResults, queryId }) => {
     saveToCSV(data, csvPath);
     saveReport(query, data, reportPath);
 
-    const key = queryId || "_last";
-    resultStore.set(key, {
-      query,
+    const resultKey = limitString(queryId, 80, "") || "_last";
+    resultStore.set(resultKey, {
+      query: cleanQuery,
       data,
       jsonPath,
       csvPath,
@@ -232,7 +616,23 @@ ipcMain.handle("start-scrape", async (_, { query, maxResults, queryId }) => {
   } catch (err) {
     sendProgress(`Error: ${err.message}`);
     return { success: false, error: err.message };
+  } finally {
+    activeScrapes.delete(key);
   }
+});
+
+ipcMain.handle("cancel-scrape", async (_, { queryId } = {}) => {
+  const key = limitString(queryId, 80, "");
+  if (key && activeScrapes.has(key)) {
+    activeScrapes.get(key).cancelled = true;
+    return { success: true, cancelled: 1 };
+  }
+  let cancelled = 0;
+  for (const token of activeScrapes.values()) {
+    token.cancelled = true;
+    cancelled++;
+  }
+  return { success: true, cancelled };
 });
 
 // ─── SAVE FILE ─────────────────────────────
@@ -284,35 +684,26 @@ ipcMain.handle("save-all-files", async (_, { type }) => {
   }
 
   const timestamp = Date.now();
-  const userDataPath = app.getPath("userData");
 
   if (type === "json") {
-    const tmpPath = path.join(userDataPath, `gmaps_all_${timestamp}.json`);
-    fs.writeFileSync(tmpPath, JSON.stringify(allData, null, 2));
-
     const { filePath, canceled } = await dialog.showSaveDialog({
       title: "Save All JSON",
       defaultPath: `gmaps_all_${timestamp}.json`,
     });
     if (canceled || !filePath)
       return { success: false, message: "Save cancelled." };
-    fs.copyFileSync(tmpPath, filePath);
-    fs.unlinkSync(tmpPath);
+    fs.writeFileSync(filePath, JSON.stringify(allData, null, 2));
     return { success: true, savedTo: filePath };
   }
 
   if (type === "csv") {
-    const tmpPath = path.join(userDataPath, `gmaps_all_${timestamp}.csv`);
-    saveToCSV(allData, tmpPath, true);
-
     const { filePath, canceled } = await dialog.showSaveDialog({
       title: "Save All CSV",
       defaultPath: `gmaps_all_${timestamp}.csv`,
     });
     if (canceled || !filePath)
       return { success: false, message: "Save cancelled." };
-    fs.copyFileSync(tmpPath, filePath);
-    fs.unlinkSync(tmpPath);
+    saveToCSV(allData, filePath, true);
     return { success: true, savedTo: filePath };
   }
 
@@ -323,34 +714,31 @@ ipcMain.handle("save-all-files", async (_, { type }) => {
 ipcMain.handle("export-leads", async (_, { leads, format }) => {
   if (!leads || !leads.length)
     return { success: false, message: "No leads to export." };
+  if (!Array.isArray(leads) || leads.length > MAX_EXPORT_LEADS) {
+    return { success: false, message: "Too many leads to export at once." };
+  }
 
   const timestamp = Date.now();
-  const userDataPath = app.getPath("userData");
-  const base = path.join(userDataPath, `sigma_leads_${timestamp}`);
 
   if (format === "json") {
-    fs.writeFileSync(`${base}.json`, JSON.stringify(leads, null, 2));
     const { filePath, canceled } = await dialog.showSaveDialog({
       title: "Export Leads JSON",
       defaultPath: `sigma_leads_${timestamp}.json`,
     });
     if (canceled || !filePath)
       return { success: false, message: "Save cancelled." };
-    fs.copyFileSync(`${base}.json`, filePath);
-    fs.unlinkSync(`${base}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(leads, null, 2));
     return { success: true, savedTo: filePath };
   }
 
   if (format === "csv") {
-    saveToCSV(leads, `${base}.csv`);
     const { filePath, canceled } = await dialog.showSaveDialog({
       title: "Export Leads CSV",
       defaultPath: `sigma_leads_${timestamp}.csv`,
     });
     if (canceled || !filePath)
       return { success: false, message: "Save cancelled." };
-    fs.copyFileSync(`${base}.csv`, filePath);
-    fs.unlinkSync(`${base}.csv`);
+    saveToCSV(leads, filePath);
     return { success: true, savedTo: filePath };
   }
 
@@ -380,7 +768,9 @@ ipcMain.handle("delete-temp-files", async () => {
 
     for (const file of files) {
       if (
-        file.startsWith("gmaps_") &&
+        (file.startsWith("gmaps_") ||
+          file.startsWith("sigma_leads_") ||
+          file.startsWith("campaign_")) &&
         (file.endsWith(".json") ||
           file.endsWith(".csv") ||
           file.endsWith(".txt"))
@@ -484,17 +874,18 @@ function onChatEvent(event) {
 }
 
 ipcMain.handle("whatsapp-connect", async (_, { provider: type, config }) => {
+  let connectionId = null;
+  let provider = null;
   try {
-    const connectionId =
-      config?.connectionId ||
-      `wa_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const connectionPath = path.join(app.getPath("userData"), "whatsapp-sessions", connectionId);
+    connectionId =
+      config?.connectionId ? assertConnectionId(config.connectionId) : createConnectionId();
+    const connectionPath = resolveSessionPath(connectionId);
     fs.mkdirSync(connectionPath, { recursive: true });
 
     const existing = whatsappProviders.get(connectionId);
     if (existing) await existing.disconnect().catch(() => {});
 
-    const provider = WhatsAppProviderFactory(
+    provider = WhatsAppProviderFactory(
       type,
       config,
       (status, data) => sendWaStatus(status, { ...(data || {}), connectionId }),
@@ -504,6 +895,9 @@ ipcMain.handle("whatsapp-connect", async (_, { provider: type, config }) => {
     whatsappProviders.set(connectionId, provider);
     activeWhatsAppId = connectionId;
     await provider.connect();
+    if (provider.getStatus && provider.getStatus() === "error") {
+      throw new Error("Provider failed to connect");
+    }
 
     if (campaignManager) {
       campaignManager.setProvider(provider);
@@ -513,13 +907,20 @@ ipcMain.handle("whatsapp-connect", async (_, { provider: type, config }) => {
     const phoneNumber = provider.getPhoneNumber();
     return { success: true, phoneNumber, connectionId, connections: listWhatsAppConnections() };
   } catch (err) {
+    if (provider) await provider.disconnect?.().catch(() => {});
+    if (connectionId) {
+      whatsappProviders.delete(connectionId);
+      if (activeWhatsAppId === connectionId) {
+        activeWhatsAppId = whatsappProviders.keys().next().value || null;
+      }
+    }
     return { success: false, error: err.message };
   }
 });
 
 ipcMain.handle("whatsapp-disconnect", async (_, { connectionId } = {}) => {
   try {
-    const id = connectionId || activeWhatsAppId;
+    const id = connectionId ? assertConnectionId(connectionId) : activeWhatsAppId;
     const provider = id ? whatsappProviders.get(id) : null;
     if (provider) {
       await provider.disconnect();
@@ -541,19 +942,20 @@ ipcMain.handle("whatsapp-disconnect", async (_, { connectionId } = {}) => {
 ipcMain.handle("whatsapp-remove-connection", async (_, { connectionId }) => {
   try {
     if (!connectionId) throw new Error("Connection ID is required");
+    const safeConnectionId = assertConnectionId(connectionId);
     
     // 1. Disconnect and remove from active map
-    const provider = whatsappProviders.get(connectionId);
+    const provider = whatsappProviders.get(safeConnectionId);
     if (provider) {
       try { await provider.disconnect(); } catch (e) {}
-      whatsappProviders.delete(connectionId);
+      whatsappProviders.delete(safeConnectionId);
     }
-    if (activeWhatsAppId === connectionId) {
+    if (activeWhatsAppId === safeConnectionId) {
       activeWhatsAppId = whatsappProviders.keys().next().value || null;
     }
 
     // 2. Delete the session folder
-    const connectionPath = path.join(app.getPath("userData"), "whatsapp-sessions", connectionId);
+    const connectionPath = resolveSessionPath(safeConnectionId);
     if (fs.existsSync(connectionPath)) {
       fs.rmSync(connectionPath, { recursive: true, force: true });
     }
@@ -601,12 +1003,17 @@ ipcMain.handle("whatsapp-list-connections", async () => ({
 }));
 
 ipcMain.handle("whatsapp-switch-connection", async (_, { connectionId }) => {
-  if (!whatsappProviders.has(connectionId)) {
-    return { success: false, error: "Conexão não encontrada" };
+  try {
+    const safeConnectionId = assertConnectionId(connectionId);
+    if (!whatsappProviders.has(safeConnectionId)) {
+      return { success: false, error: "Conexão não encontrada" };
+    }
+    activeWhatsAppId = safeConnectionId;
+    if (campaignManager) campaignManager.setProvider(getActiveWhatsAppProvider());
+    return { success: true, activeConnectionId: activeWhatsAppId, connections: listWhatsAppConnections() };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
-  activeWhatsAppId = connectionId;
-  if (campaignManager) campaignManager.setProvider(getActiveWhatsAppProvider());
-  return { success: true, activeConnectionId: activeWhatsAppId, connections: listWhatsAppConnections() };
 });
 
 // ─── FORCE RESYNC ─────────────────────────
@@ -617,7 +1024,7 @@ ipcMain.handle("whatsapp-force-resync", async () => {
     if (provider) await provider.disconnect().catch(() => {});
     const { AuthStore } = require("./whatsapp/auth-store");
     const sessionPath = id
-      ? path.join(app.getPath("userData"), "whatsapp-sessions", id)
+      ? resolveSessionPath(id)
       : app.getPath("userData");
     const store = new AuthStore(sessionPath);
     await store.clearBaileysAuth();
@@ -703,8 +1110,9 @@ ipcMain.handle("whatsapp-send-media", async (_, { to, filePath, caption }) => {
   const provider = getActiveWhatsAppProvider();
   if (!provider) return { success: false, error: "Not connected" };
   try {
-    const buffer = fs.readFileSync(filePath);
-    const ext = path.extname(filePath).toLowerCase();
+    const mediaPath = resolveSelectedMediaPath(filePath, MAX_MEDIA_BYTES, "Media file");
+    const buffer = fs.readFileSync(mediaPath);
+    const ext = path.extname(mediaPath).toLowerCase();
     const mimeMap = {
       ".jpg": "image/jpeg",
       ".jpeg": "image/jpeg",
@@ -728,9 +1136,10 @@ ipcMain.handle("whatsapp-send-media", async (_, { to, filePath, caption }) => {
     const isVideo = mimetype.startsWith("video/");
     const isAudio = mimetype.startsWith("audio/");
 
-    const content = { text: caption };
-    if (isImage) content.image = buffer;
-    else if (isVideo) content.video = buffer;
+    const content = {};
+    if (caption) content.caption = caption;
+    if (isImage) { content.image = buffer; content.mimetype = mimetype; }
+    else if (isVideo) { content.video = buffer; content.mimetype = mimetype; }
     else if (isAudio) {
       content.audio = buffer;
       content.mimetype = mimetype;
@@ -738,7 +1147,7 @@ ipcMain.handle("whatsapp-send-media", async (_, { to, filePath, caption }) => {
     }
     else {
       content.document = buffer;
-      content.fileName = path.basename(filePath);
+      content.fileName = path.basename(mediaPath);
       content.mimetype = mimetype;
     }
 
@@ -799,6 +1208,9 @@ ipcMain.handle(
     const provider = getActiveWhatsAppProvider();
     if (!provider) return { success: false, error: "Not connected" };
     try {
+      if (!audioData || audioData.length > MAX_AUDIO_BYTES) {
+        throw new Error("Audio exceeds maximum size");
+      }
       const rawBuffer = Buffer.from(audioData);
       const audio = await convertAudioToOggOpus(rawBuffer, mimetype);
       return await provider.sendAudio(to, audio.buffer, audio.mimetype);
@@ -813,7 +1225,8 @@ ipcMain.handle("whatsapp-send-sticker", async (_, { to, filePath }) => {
   if (!provider || !provider.sendSticker)
     return { success: false, error: "Not connected" };
   try {
-    const buffer = fs.readFileSync(filePath);
+    const stickerPath = resolveSelectedMediaPath(filePath, MAX_STICKER_BYTES, "Sticker file");
+    const buffer = fs.readFileSync(stickerPath);
     return await provider.sendSticker(to, buffer);
   } catch (e) {
     return { success: false, error: e.message };
@@ -851,19 +1264,121 @@ ipcMain.handle("whatsapp-get-archived-chats", async () => {
   return { chats: provider.getArchivedChats() };
 });
 
+ipcMain.handle("whatsapp-get-settings", async () => {
+  return { settings: loadWhatsAppSettings() };
+});
+
+ipcMain.handle("whatsapp-update-settings", async (_, { patch }) => {
+  const current = loadWhatsAppSettings();
+  const next = mergeWhatsAppSettingsPatch(current, patch);
+  return { success: true, settings: saveWhatsAppSettings(next) };
+});
+
+ipcMain.handle("whatsapp-start-chat", async (_, { phone, name }) => {
+  try {
+    if (typeof phone === "string" && phone.includes("@")) {
+      const jid = phone.trim();
+      return {
+        success: true,
+        jid,
+        phone: jid.replace(/@.*$/, ""),
+        name: limitString(name || "", 80),
+      };
+    }
+    const normalized = normalizePhone(phone);
+    if (!normalized.valid) {
+      return { success: false, error: "Número inválido" };
+    }
+    return {
+      success: true,
+      jid: `${normalized.number}@s.whatsapp.net`,
+      phone: normalized.number,
+      name: limitString(name || "", 80),
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle("whatsapp-get-link-preview", async (_, { url }) => {
+  try {
+    return await fetchLinkPreview(url);
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle("whatsapp-save-sticker", async (_, { jid, messageId, name }) => {
+  const provider = getActiveWhatsAppProvider();
+  if (!provider || !provider.saveStickerMedia)
+    return { success: false, error: "Not connected" };
+  const result = await provider.saveStickerMedia(jid, messageId, name);
+  if (result?.success && result.sticker) {
+    const stickers = loadStickerStore();
+    const next = [
+      {
+        ...result.sticker,
+        name: limitString(name || result.sticker.name || "Figurinha", 80),
+        lastUsedAt: Date.now(),
+        favorite: false,
+      },
+      ...stickers.filter((item) => item.id !== result.sticker.id),
+    ].slice(0, 500);
+    saveStickerStore(next);
+  }
+  return result;
+});
+
+ipcMain.handle("whatsapp-list-stickers", async () => {
+  return { stickers: loadStickerStore() };
+});
+
+ipcMain.handle("whatsapp-send-saved-sticker", async (_, { to, stickerId }) => {
+  const provider = getActiveWhatsAppProvider();
+  if (!provider || !provider.sendSticker)
+    return { success: false, error: "Not connected" };
+  try {
+    const stickers = loadStickerStore();
+    const sticker = stickers.find((item) => item.id === stickerId);
+    if (!sticker || !sticker.filePath || !fs.existsSync(sticker.filePath)) {
+      return { success: false, error: "Figurinha não encontrada" };
+    }
+    const buffer = fs.readFileSync(sticker.filePath);
+    const result = await provider.sendSticker(to, buffer);
+    if (result?.success) {
+      sticker.lastUsedAt = Date.now();
+      saveStickerStore(stickers);
+    }
+    return result;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle("dialog-open-file", async (_, { filters }) => {
   if (!mainWindow) return { canceled: true };
+  const options =
+    Array.isArray(filters)
+      ? { filters }
+      : filters && typeof filters === "object"
+        ? {
+            title: filters.title,
+            filters: Array.isArray(filters.filters) ? filters.filters : undefined,
+          }
+        : {};
   const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
     properties: ["openFile"],
-    filters: filters || [{ name: "All Files", extensions: ["*"] }],
+    filters: options.filters || [{ name: "All Files", extensions: ["*"] }],
+    title: options.title,
   });
+  if (!canceled && filePaths[0]) rememberAllowedMediaPath(filePaths[0]);
   return { canceled, filePath: filePaths[0] };
 });
 
 // ─── CAMPAIGN MANAGEMENT ───────────────────
 ipcMain.handle("campaign-create", async (_, data) => {
   try {
-    const campaign = campaignManager.create(data);
+    const campaign = campaignManager.create(sanitizeCampaignData(data));
     return { success: true, campaign };
   } catch (err) {
     return { success: false, error: err.message };
@@ -872,7 +1387,7 @@ ipcMain.handle("campaign-create", async (_, data) => {
 
 ipcMain.handle("campaign-update", async (_, { id, updates }) => {
   try {
-    const campaign = campaignManager.update(id, updates);
+    const campaign = campaignManager.update(id, sanitizeCampaignUpdates(updates));
     return { success: true, campaign };
   } catch (err) {
     return { success: false, error: err.message };
@@ -920,6 +1435,15 @@ ipcMain.handle("campaign-resume", async (_, { id }) => {
   }
 });
 
+ipcMain.handle("campaign-retry-failed", async (_, { id }) => {
+  try {
+    const count = campaignManager.retryFailed(id);
+    return { success: true, count };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle("campaign-get-all", async () => {
   return { campaigns: campaignManager.getAll() };
 });
@@ -934,23 +1458,19 @@ ipcMain.handle("campaign-export", async (_, { id, format }) => {
     const campaign = campaignManager.get(id);
     if (!campaign) return { success: false, message: "Campaign not found" };
 
-    const userDataPath = app.getPath("userData");
     const timestamp = Date.now();
     const safeName = campaign.name
       .replace(/\s+/g, "_")
       .replace(/[^a-zA-Z0-9_]/g, "");
-    const base = path.join(userDataPath, `campaign_${safeName}_${timestamp}`);
 
     if (format === "json") {
-      fs.writeFileSync(`${base}.json`, JSON.stringify(campaign, null, 2));
       const { filePath, canceled } = await dialog.showSaveDialog({
         title: "Export Campaign JSON",
         defaultPath: `campaign_${safeName}_${timestamp}.json`,
       });
       if (canceled || !filePath)
         return { success: false, message: "Save cancelled." };
-      fs.copyFileSync(`${base}.json`, filePath);
-      fs.unlinkSync(`${base}.json`);
+      fs.writeFileSync(filePath, JSON.stringify(campaign, null, 2));
       return { success: true, savedTo: filePath };
     }
 
@@ -963,15 +1483,13 @@ ipcMain.handle("campaign-export", async (_, { id, format }) => {
         status: l.status,
         errorMessage: l.errorMessage || "",
       }));
-      saveToCSV(rows, `${base}.csv`);
       const { filePath, canceled } = await dialog.showSaveDialog({
         title: "Export Campaign CSV",
         defaultPath: `campaign_${safeName}_${timestamp}.csv`,
       });
       if (canceled || !filePath)
         return { success: false, message: "Save cancelled." };
-      fs.copyFileSync(`${base}.csv`, filePath);
-      fs.unlinkSync(`${base}.csv`);
+      saveToCSV(rows, filePath);
       return { success: true, savedTo: filePath };
     }
 

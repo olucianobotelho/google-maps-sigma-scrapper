@@ -21,24 +21,95 @@ var mediaCache = {};
 var replyingToMsg = null;
 var chatListenersBound = false;
 var waSettings = loadWaSettings();
+var stickerLibrary = [];
+var settingsSyncPromise = null;
+var activeStickerTray = null;
+
+function normalizeWaSettings(raw) {
+  var input = raw && typeof raw === "object" ? raw : {};
+  var notif =
+    input.notifications && typeof input.notifications === "object"
+      ? input.notifications
+      : { desktop: input.notifications !== false };
+  return {
+    notifications: {
+      desktop: notif.desktop !== false,
+      sound: notif.sound !== false,
+      showPreview: notif.showPreview !== false,
+      notifyGroups: notif.notifyGroups !== false,
+      quietHours: notif.quietHours || null,
+    },
+    sound: input.sound !== false,
+    mutedChats: input.mutedChats || {},
+    media: Object.assign(
+      {
+        autoDownloadImages: true,
+        autoDownloadAudio: true,
+        autoDownloadVideos: false,
+        autoDownloadDocuments: false,
+        autoDownloadStickers: true,
+        maxAutoDownloadBytes: 5242880,
+        cacheLimitBytes: 1073741824,
+      },
+      input.media || {},
+    ),
+    previews: Object.assign(
+      { links: true, pdf: true, videoPreloadBytes: 5242880 },
+      input.previews || {},
+    ),
+    groups: Object.assign(
+      {
+        allowFunnels: false,
+        confirmFunnels: true,
+        allowCampaigns: false,
+        downloadPictures: true,
+      },
+      input.groups || {},
+    ),
+  };
+}
 
 function loadWaSettings() {
   try {
-    return Object.assign(
-      {
-        notifications: true,
-        sound: true,
-        mutedChats: {},
-      },
+    return normalizeWaSettings(
       JSON.parse(localStorage.getItem("sigma_wa_settings") || "{}"),
     );
   } catch (e) {
-    return { notifications: true, sound: true, mutedChats: {} };
+    return normalizeWaSettings({});
   }
 }
 
 function saveWaSettings() {
   localStorage.setItem("sigma_wa_settings", JSON.stringify(waSettings));
+  if (window.chatAPI && window.chatAPI.updateSettings) {
+    window.chatAPI.updateSettings(waSettings).catch(function () {});
+  }
+}
+
+function fileUrl(path) {
+  return "file:///" + String(path || "").replace(/\\/g, "/").replace(/#/g, "%23").replace(/\?/g, "%3F").replace(/ /g, "%20");
+}
+
+function extractFirstUrl(text) {
+  var match = String(text || "").match(/https?:\/\/[^\s<>"')\]]+/i);
+  return match ? match[0] : "";
+}
+
+function syncWaSettings() {
+  if (settingsSyncPromise) return settingsSyncPromise;
+  settingsSyncPromise = window.chatAPI
+    .getSettings()
+    .then(function (r) {
+      if (r && r.settings) {
+        waSettings = normalizeWaSettings(Object.assign({}, waSettings, r.settings));
+        saveWaSettings();
+      }
+    })
+    .catch(function () {})
+    .finally(function () {
+      settingsSyncPromise = null;
+    });
+  return settingsSyncPromise;
 }
 
 function getChatDisplayName(jid) {
@@ -75,7 +146,7 @@ function notifyIncomingMessage(data) {
   if (!data || !data.message || data.message.key?.fromMe) return;
   if (waSettings.mutedChats && waSettings.mutedChats[data.jid]) return;
   if (waSettings.sound) playNotificationSound();
-  if (!waSettings.notifications || typeof Notification === "undefined") return;
+  if (!waSettings.notifications || waSettings.notifications.desktop === false || typeof Notification === "undefined") return;
   var name = getChatDisplayName(data.jid);
   var body = data.message.message
     ? formatMessagePreview(data.message.message)
@@ -182,9 +253,17 @@ function saveFunnels() {
 loadFunnels();
 
 // ─── RENDER ────────────────────────────────
+var _chatListInitialized = false;
+
 async function renderChatList() {
   var panel = document.getElementById("waChatsPanel");
   if (!panel) return;
+  await syncWaSettings();
+  if (_chatListInitialized) {
+    await refreshChats();
+    return;
+  }
+  _chatListInitialized = true;
   panel.innerHTML =
     '<div id="chatSidebar"' +
     (sidebarCollapsed ? ' class="collapsed"' : "") +
@@ -344,6 +423,10 @@ async function refreshChats() {
     }, 5000);
   }
   rerenderChatSidebar();
+  // Restore active chat view if chat was open before tab switch
+  if (activeChat && document.getElementById("chatMessagesContainer") && !document.getElementById("chatHeaderClick")) {
+    selectChat(activeChat, true);
+  }
 }
 
 var chatFilterTab = "contacts"; // 'contacts','unread','groups','all'
@@ -400,6 +483,52 @@ function buildSyncProgressHtml(compact) {
   );
 }
 
+function isGroupChat(c) {
+  return !!(c && (c.isGroup || (c.jid || "").endsWith("@g.us")));
+}
+
+function isContactChat(c) {
+  return !!(c && !isGroupChat(c));
+}
+
+function getUnreadCount(c) {
+  return Math.max(0, Number((c && c.unread) || 0));
+}
+
+function getUnreadTotal(list) {
+  return (list || []).reduce(function (sum, c) {
+    return sum + getUnreadCount(c);
+  }, 0);
+}
+
+function getChatSidebarStats() {
+  return {
+    contacts: chats.filter(isContactChat).length,
+    unreadChats: chats.filter(function (c) {
+      return getUnreadCount(c) > 0;
+    }).length,
+    unreadMessages: getUnreadTotal(chats),
+    groups: chats.filter(isGroupChat).length,
+    all: chats.length,
+  };
+}
+
+function buildFilterTabHtml(tab, label, count) {
+  var badge =
+    count > 0 ? '<span class="chat-filter-count">' + (count > 99 ? "99+" : count) + "</span>" : "";
+  return (
+    '<button class="chat-filter-tab' +
+    (chatFilterTab === tab ? " active" : "") +
+    '" data-ftab="' +
+    tab +
+    '"><span>' +
+    label +
+    "</span>" +
+    badge +
+    "</button>"
+  );
+}
+
 function rerenderChatSidebar() {
   var inner = document.getElementById("chatSidebarInner");
   if (!inner) return;
@@ -407,19 +536,20 @@ function rerenderChatSidebar() {
   var keepSearchFocus = oldSearch && document.activeElement === oldSearch;
   var keepSelectionStart = keepSearchFocus ? oldSearch.selectionStart : null;
   var keepSelectionEnd = keepSearchFocus ? oldSearch.selectionEnd : null;
+  var stats = getChatSidebarStats();
   var filtered = chats;
   // Apply tab filter
   if (chatFilterTab === "contacts")
     filtered = filtered.filter(function (c) {
-      return !c.isGroup && !c.jid.endsWith("@g.us");
+      return isContactChat(c);
     });
   else if (chatFilterTab === "unread")
     filtered = filtered.filter(function (c) {
-      return c.unread > 0;
+      return getUnreadCount(c) > 0;
     });
   else if (chatFilterTab === "groups")
     filtered = filtered.filter(function (c) {
-      return c.isGroup || c.jid.endsWith("@g.us");
+      return isGroupChat(c);
     });
   // Apply text search
   if (chatFilter)
@@ -440,27 +570,15 @@ function rerenderChatSidebar() {
   var h = "";
   // Search bar
   h +=
-    '<div style="padding:8px 12px;border-bottom:1px solid #2a3942;"><input id="chatSearch" placeholder="Pesquisar ou começar uma nova conversa" style="width:100%;background:#202c33;border:none;color:#e9edef;padding:7px 12px;border-radius:8px;font-size:13px;outline:none;" value="' +
+    '<div style="padding:8px 12px;border-bottom:1px solid #2a3942;display:flex;gap:8px;align-items:center;"><input id="chatSearch" placeholder="Pesquisar ou começar uma nova conversa" style="flex:1;min-width:0;background:#202c33;border:none;color:#e9edef;padding:7px 12px;border-radius:8px;font-size:13px;outline:none;" value="' +
     escHtml(chatFilter) +
-    '"></div>';
+    '"><button id="btnNewChat" title="Nova conversa" style="width:34px;height:34px;border:none;border-radius:8px;background:#202c33;color:#e9edef;cursor:pointer;">＋</button></div>';
   // Filter tabs
   h += '<div class="chat-filter-tabs">';
-  h +=
-    '<button class="chat-filter-tab' +
-    (chatFilterTab === "contacts" ? " active" : "") +
-    '" data-ftab="contacts">Conversas</button>';
-  h +=
-    '<button class="chat-filter-tab' +
-    (chatFilterTab === "unread" ? " active" : "") +
-    '" data-ftab="unread">Não lidas</button>';
-  h +=
-    '<button class="chat-filter-tab' +
-    (chatFilterTab === "groups" ? " active" : "") +
-    '" data-ftab="groups">Grupos</button>';
-  h +=
-    '<button class="chat-filter-tab' +
-    (chatFilterTab === "all" ? " active" : "") +
-    '" data-ftab="all">Tudo</button>';
+  h += buildFilterTabHtml("contacts", "Conversas", stats.contacts);
+  h += buildFilterTabHtml("unread", "Não lidas", stats.unreadMessages);
+  h += buildFilterTabHtml("groups", "Grupos", stats.groups);
+  h += buildFilterTabHtml("all", "Tudo", stats.all);
   h += "</div>";
   if (shouldShowSyncProgress() && chats.length > 0) {
     h += buildSyncProgressHtml(true);
@@ -500,9 +618,10 @@ function rerenderChatSidebar() {
   }
   h +=
     '<div class="chat-sidebar-footer" style="font-size:9px;color:#8696a0;text-align:center;padding:6px;">' +
-    chats.length +
-    " conversa" +
-    (chats.length !== 1 ? "s" : "") +
+    filtered.length +
+    " exibida" +
+    (filtered.length !== 1 ? "s" : "") +
+    (stats.unreadMessages ? " · " + stats.unreadMessages + " não lida" + (stats.unreadMessages !== 1 ? "s" : "") : "") +
     "</div>";
   inner.innerHTML = h;
 
@@ -533,6 +652,12 @@ function rerenderChatSidebar() {
       var pos = keepSelectionStart == null ? s.value.length : keepSelectionStart;
       s.setSelectionRange(pos, keepSelectionEnd == null ? pos : keepSelectionEnd);
     }
+  }
+  var nc = document.getElementById("btnNewChat");
+  if (nc) {
+    nc.addEventListener("click", function () {
+      startNewConversation();
+    });
   }
   // Chat click
   var l = inner.querySelector("#chatList");
@@ -570,18 +695,23 @@ function rerenderChatSidebar() {
       showEmptyChat();
     }
   }
-  loadVisibleProfilePics(filtered);
+  loadVisibleProfilePics(
+    showArchived && archivedChats.length > 0
+      ? filtered.concat(archivedChats)
+      : filtered,
+  );
 }
 
 function buildChatItemHtml(c, isPinned) {
-  var hasUnread = c.unread > 0;
+  var unreadCount = getUnreadCount(c);
+  var hasUnread = unreadCount > 0;
   var badge = hasUnread
     ? '<span class="chat-badge">' +
-      (c.unread > 99 ? "99+" : c.unread) +
+      (unreadCount > 99 ? "99+" : unreadCount) +
       "</span>"
     : "";
   var pinHtml = isPinned ? '<span class="pin-icon">📌</span>' : "";
-  var isGrp = c.jid.endsWith("@g.us");
+  var isGrp = isGroupChat(c);
   var phoneFormatted = getChatPhone(c);
   var displayName = getChatName(c);
   var initial = (
@@ -595,7 +725,7 @@ function buildChatItemHtml(c, isPinned) {
   var cachedPic = profilePicCache[c.jid];
   var avatarClass = "chat-avatar" + (isGrp ? " group-avatar" : "");
   var avatarInner = cachedPic
-    ? '<img src="' + cachedPic + '">' + initial
+    ? '<img src="' + escHtml(cachedPic) + '">'
     : isGrp
       ? "👥"
       : initial;
@@ -622,7 +752,7 @@ function buildChatItemHtml(c, isPinned) {
     (activeChat === c.jid ? " active" : "") +
     (isPinned ? " pinned" : "") +
     '" data-jid="' +
-    c.jid +
+    escHtml(c.jid) +
     '">' +
     '<div class="' +
     avatarClass +
@@ -751,6 +881,7 @@ async function performChatAction(jid, act) {
 
 function loadVisibleProfilePics(chatList) {
   chatList.forEach(function (c) {
+    if (isGroupChat(c) && waSettings.groups && waSettings.groups.downloadPictures === false) return;
     if (profilePicCache[c.jid] || profilePicLoading[c.jid]) return;
     profilePicLoading[c.jid] = true;
     window.chatAPI
@@ -758,14 +889,15 @@ function loadVisibleProfilePics(chatList) {
       .then(function (r) {
         if (r && r.url) {
           profilePicCache[c.jid] = r.url;
+          c.profilePic = r.url;
           // Update avatar in sidebar without full re-render
-          var safeJid =
-            window.CSS && CSS.escape
-              ? CSS.escape(c.jid)
-              : c.jid.replace(/"/g, '\\"');
-          var el = document.querySelector(
-            '.chat-item[data-jid="' + safeJid + '"] .chat-avatar',
+          var item = Array.prototype.find.call(
+            document.querySelectorAll(".chat-item"),
+            function (el) {
+              return el.dataset.jid === c.jid;
+            },
           );
+          var el = item && item.querySelector(".chat-avatar");
           if (el) {
             el.innerHTML = "";
             var img = document.createElement("img");
@@ -816,7 +948,7 @@ function renderWaSettings() {
     '<div class="wa-settings-grid">' +
     '<div class="wa-card wa-settings-card"><h4>⚙️ Notificações</h4>' +
     '<label class="wa-toggle-row"><span><b>Notificações na área de trabalho</b><small>Mostra alerta quando chegar mensagem nova.</small></span><input type="checkbox" id="waNotifToggle" ' +
-    (waSettings.notifications ? "checked" : "") +
+    (waSettings.notifications && waSettings.notifications.desktop !== false ? "checked" : "") +
     "></label>" +
     '<label class="wa-toggle-row"><span><b>Som de nova mensagem</b><small>Reproduz um toque curto ao receber mensagem.</small></span><input type="checkbox" id="waSoundToggle" ' +
     (waSettings.sound ? "checked" : "") +
@@ -849,12 +981,38 @@ function renderWaSettings() {
           })
           .join("")
       : '<p class="wa-settings-empty">Nenhuma conversa silenciada.</p>') +
+    "</div>" +
+    '<div class="wa-card wa-settings-card"><h4>📦 Mídia</h4>' +
+    '<label class="wa-toggle-row"><span><b>Baixar imagens automaticamente</b><small>Imagem recebida entra no cache local.</small></span><input type="checkbox" id="waMediaImages" ' +
+    (waSettings.media && waSettings.media.autoDownloadImages ? "checked" : "") +
+    '></label><label class="wa-toggle-row"><span><b>Baixar vídeos automaticamente</b><small>Vídeo recebido fica pronto sem novo download.</small></span><input type="checkbox" id="waMediaVideos" ' +
+    (waSettings.media && waSettings.media.autoDownloadVideos ? "checked" : "") +
+    '></label><label class="wa-toggle-row"><span><b>Baixar documentos automaticamente</b><small>PDF e docs entram no cache local.</small></span><input type="checkbox" id="waMediaDocs" ' +
+    (waSettings.media && waSettings.media.autoDownloadDocuments ? "checked" : "") +
+    '></label><label class="wa-toggle-row"><span><b>Salvar figurinhas automaticamente</b><small>Figurinhas recebidas vão para biblioteca.</small></span><input type="checkbox" id="waMediaStickers" ' +
+    (waSettings.media && waSettings.media.autoDownloadStickers ? "checked" : "") +
+    '></label></div>' +
+    '<div class="wa-card wa-settings-card"><h4>👁 Previews</h4>' +
+    '<label class="wa-toggle-row"><span><b>Prévia de links</b><small>Card com título, imagem e domínio.</small></span><input type="checkbox" id="waPreviewLinks" ' +
+    (waSettings.previews && waSettings.previews.links ? "checked" : "") +
+    '></label><label class="wa-toggle-row"><span><b>Prévia de PDF</b><small>Abre documento em visualização interna.</small></span><input type="checkbox" id="waPreviewPdf" ' +
+    (waSettings.previews && waSettings.previews.pdf ? "checked" : "") +
+    '></label></div>' +
+    '<div class="wa-card wa-settings-card"><h4>👥 Grupos</h4>' +
+    '<label class="wa-toggle-row"><span><b>Baixar foto de grupo</b><small>Atualiza avatar de grupos automaticamente.</small></span><input type="checkbox" id="waGroupPics" ' +
+    (waSettings.groups && waSettings.groups.downloadPictures ? "checked" : "") +
+    '></label><label class="wa-toggle-row"><span><b>Permitir funis em grupos</b><small>Libera automação em grupo com confirmação.</small></span><input type="checkbox" id="waGroupFunnels" ' +
+    (waSettings.groups && waSettings.groups.allowFunnels ? "checked" : "") +
+    '></label><label class="wa-toggle-row"><span><b>Confirmar automação em grupo</b><small>Pede confirmação antes de enviar.</small></span><input type="checkbox" id="waGroupFunnelsConfirm" ' +
+    (waSettings.groups && waSettings.groups.confirmFunnels ? "checked" : "") +
+    '></label></div>' +
+    '<div class="wa-card wa-settings-card"><h4>🌟 Figurinhas salvas</h4><div id="waStickerLibrary" class="wa-sticker-library"><p class="wa-settings-empty">Carregando figurinhas...</p></div></div>' +
     "</div></div>";
 
   var notifToggle = document.getElementById("waNotifToggle");
   if (notifToggle) {
     notifToggle.addEventListener("change", function () {
-      waSettings.notifications = this.checked;
+      waSettings.notifications.desktop = this.checked;
       saveWaSettings();
     });
   }
@@ -879,6 +1037,102 @@ function renderWaSettings() {
             : "Notificações não permitidas",
           permission === "granted" ? "s" : "e",
         );
+      });
+    });
+  }
+  var mediaImages = document.getElementById("waMediaImages");
+  if (mediaImages) {
+    mediaImages.addEventListener("change", function () {
+      waSettings.media.autoDownloadImages = this.checked;
+      saveWaSettings();
+    });
+  }
+  var mediaVideos = document.getElementById("waMediaVideos");
+  if (mediaVideos) {
+    mediaVideos.addEventListener("change", function () {
+      waSettings.media.autoDownloadVideos = this.checked;
+      saveWaSettings();
+    });
+  }
+  var mediaDocs = document.getElementById("waMediaDocs");
+  if (mediaDocs) {
+    mediaDocs.addEventListener("change", function () {
+      waSettings.media.autoDownloadDocuments = this.checked;
+      saveWaSettings();
+    });
+  }
+  var mediaStickers = document.getElementById("waMediaStickers");
+  if (mediaStickers) {
+    mediaStickers.addEventListener("change", function () {
+      waSettings.media.autoDownloadStickers = this.checked;
+      saveWaSettings();
+    });
+  }
+  var previewLinks = document.getElementById("waPreviewLinks");
+  if (previewLinks) {
+    previewLinks.addEventListener("change", function () {
+      waSettings.previews.links = this.checked;
+      saveWaSettings();
+    });
+  }
+  var previewPdf = document.getElementById("waPreviewPdf");
+  if (previewPdf) {
+    previewPdf.addEventListener("change", function () {
+      waSettings.previews.pdf = this.checked;
+      saveWaSettings();
+    });
+  }
+  var groupPics = document.getElementById("waGroupPics");
+  if (groupPics) {
+    groupPics.addEventListener("change", function () {
+      waSettings.groups.downloadPictures = this.checked;
+      saveWaSettings();
+      rerenderChatSidebar();
+    });
+  }
+  var groupFunnels = document.getElementById("waGroupFunnels");
+  if (groupFunnels) {
+    groupFunnels.addEventListener("change", function () {
+      waSettings.groups.allowFunnels = this.checked;
+      saveWaSettings();
+    });
+  }
+  var groupFunnelsConfirm = document.getElementById("waGroupFunnelsConfirm");
+  if (groupFunnelsConfirm) {
+    groupFunnelsConfirm.addEventListener("change", function () {
+      waSettings.groups.confirmFunnels = this.checked;
+      saveWaSettings();
+    });
+  }
+  if (window.chatAPI.listStickers) {
+    window.chatAPI.listStickers().then(function (r) {
+      stickerLibrary = (r && r.stickers) || [];
+      var lib = document.getElementById("waStickerLibrary");
+      if (!lib) return;
+      lib.innerHTML = stickerLibrary.length
+        ? stickerLibrary
+            .map(function (s) {
+              return (
+                '<div class="wa-sticker-row"><img src="' +
+                escHtml(fileUrl(s.filePath)) +
+                '"><div class="wa-sticker-meta"><strong>' +
+                escHtml(s.name || s.id) +
+                '</strong><small>' +
+                escHtml(s.filePath || "") +
+                "</small></div><button class=\"btn btn2 wa-send-sticker\" data-id=\"" +
+                escHtml(s.id) +
+                '">Enviar</button></div>'
+              );
+            })
+            .join("")
+        : '<p class="wa-settings-empty">Nenhuma figurinha salva.</p>';
+      lib.querySelectorAll(".wa-send-sticker").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          if (!activeChat) return;
+          window.chatAPI.sendSavedSticker(activeChat, this.dataset.id).then(function () {
+            if (activeChat) selectChat(activeChat, true);
+          });
+        });
       });
     });
   }
@@ -928,6 +1182,146 @@ async function selectChat(jid, silent) {
       c.scrollTop = c.scrollHeight;
     }, 50);
   }
+}
+
+async function startNewConversation() {
+  var raw = prompt("Digite número ou JID da conversa:");
+  if (!raw) return;
+  var name = prompt("Nome opcional para salvar localmente:", "");
+  try {
+    var res = await window.chatAPI.startChat(raw.trim(), name || "");
+    if (!res || !res.success) {
+      toast((res && res.error) || "Número inválido", "e");
+      return;
+    }
+    activeChat = res.jid;
+    await selectChat(res.jid, true);
+    rerenderChatSidebar();
+  } catch (e) {
+    toast(e.message || "Erro ao abrir conversa", "e");
+  }
+}
+
+function renderLinkPreviewSnippet(text, jid, mid) {
+  var url = extractFirstUrl(text);
+  if (!url || !waSettings.previews || waSettings.previews.links === false) return "";
+  var key = "link:" + jid + ":" + mid;
+  var cached = mediaCache[key];
+  if (!cached) {
+    mediaCache[key] = { state: "loading", url: url };
+    window.chatAPI.getLinkPreview(url).then(function (r) {
+      mediaCache[key] = r && r.success ? r : { success: false, url: url, error: (r && r.error) || "preview" };
+      refreshLinkPreviewCard(key);
+    });
+  }
+  cached = mediaCache[key];
+  if (!cached || cached.state === "loading") {
+    return '<div class="link-preview" data-link-key="' + escHtml(key) + '"><span>Carregando prévia...</span></div>';
+  }
+  if (cached.success === false) return "";
+  return (
+    '<div class="link-preview" data-link-key="' +
+    escHtml(key) +
+    '"><div class="lp-domain">' +
+    escHtml(cached.siteName || cached.host || "") +
+    '</div><div class="lp-title">' +
+    escHtml(cached.title || cached.url) +
+    '</div><div class="lp-desc">' +
+    escHtml(cached.description || "") +
+    "</div></div>"
+  );
+}
+
+function refreshLinkPreviewCard(key) {
+  var el = document.querySelector('[data-link-key="' + key.replace(/"/g, '\\"') + '"]');
+  if (!el) return;
+  var cached = mediaCache[key];
+  if (!cached || cached.state === "loading") {
+    el.innerHTML = "<span>Carregando prévia...</span>";
+    return;
+  }
+  if (cached.success === false) {
+    el.remove();
+    return;
+  }
+  el.innerHTML =
+    '<div class="lp-domain">' +
+    escHtml(cached.siteName || cached.host || "") +
+    '</div><div class="lp-title">' +
+    escHtml(cached.title || cached.url) +
+    '</div><div class="lp-desc">' +
+    escHtml(cached.description || "") +
+    "</div>";
+}
+
+function loadDocumentPreview(docEl) {
+  if (!docEl || docEl.dataset.previewing) return;
+  docEl.dataset.previewing = "1";
+  var status = docEl.querySelector(".doc-inline-status");
+  if (status) status.textContent = "Carregando preview...";
+  var cacheKey = docEl.dataset.jid + ":" + docEl.dataset.mid;
+  function setPreview(src) {
+    var old = docEl.querySelector(".doc-inline-preview");
+    if (old) old.remove();
+    var frame = document.createElement("iframe");
+    frame.className = "doc-inline-preview";
+    frame.src = src;
+    docEl.appendChild(frame);
+    if (status) status.textContent = "Clique para abrir em tela cheia";
+  }
+  if (mediaCache[cacheKey]) {
+    setPreview(mediaCache[cacheKey]);
+    return;
+  }
+  window.chatAPI.downloadMedia(docEl.dataset.jid, docEl.dataset.mid).then(function (r) {
+    if (r && r.success) {
+      var src = r.filePath ? fileUrl(r.filePath) : "data:" + r.mimetype + ";base64," + r.data;
+      mediaCache[cacheKey] = src;
+      setPreview(src);
+    } else if (status) {
+      status.textContent = "Preview indisponível";
+    }
+  });
+}
+
+function openDocumentModal(jid, mid, fileName, mime) {
+  var modal = document.createElement("div");
+  modal.className = "fullscreen-image-modal document-modal";
+  modal.innerHTML =
+    '<button class="fs-close">✕</button><div class="media-modal-loading">Carregando documento...</div><div class="doc-modal-shell"><iframe style="display:none;"></iframe><div class="doc-modal-actions"><span class="doc-meta">' +
+    escHtml(fileName || "Documento") +
+    " · " +
+    escHtml(mime || "") +
+    '</span></div></div>';
+  document.body.appendChild(modal);
+  modal.querySelector(".fs-close").addEventListener("click", function () {
+    modal.remove();
+  });
+  modal.addEventListener("click", function (e) {
+    if (e.target === modal) modal.remove();
+  });
+  var cacheKey = jid + ":" + mid;
+  function setDoc(src) {
+    var frame = modal.querySelector("iframe");
+    var loading = modal.querySelector(".media-modal-loading");
+    if (loading) loading.remove();
+    frame.style.display = "block";
+    frame.src = src;
+  }
+  if (mediaCache[cacheKey]) {
+    setDoc(mediaCache[cacheKey]);
+    return;
+  }
+  window.chatAPI.downloadMedia(jid, mid).then(function (r) {
+    if (r && r.success) {
+      var src = r.filePath ? fileUrl(r.filePath) : "data:" + r.mimetype + ";base64," + r.data;
+      mediaCache[cacheKey] = src;
+      setDoc(src);
+    } else {
+      var loading = modal.querySelector(".media-modal-loading");
+      if (loading) loading.textContent = "Não foi possível carregar o documento";
+    }
+  });
 }
 
 function renderChatMainShell(jid) {
@@ -1013,7 +1407,7 @@ function renderChatMainShell(jid) {
     openEmojiPicker(inp);
   });
   document.getElementById("btnSticker").addEventListener("click", function () {
-    attachSticker(jid);
+    showStickerTray(jid, this);
   });
   var rb = document.getElementById("btnRecord");
   rb.addEventListener("mousedown", function () {
@@ -1301,7 +1695,7 @@ function formatMessageText(text, msg) {
   var urlRegex = /(https?:\/\/[^\s]+)/g;
   t = t.replace(
     urlRegex,
-    '<a href="$1" target="_blank" style="color:#53bdeb;text-decoration:underline;">$1</a>',
+    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#53bdeb;text-decoration:underline;">$1</a>',
   );
   var mentions =
     (msg.message &&
@@ -1499,16 +1893,38 @@ function renderMessageBubbles(c, msgs) {
       // Try loading full sticker
       if (true) {
         (function (el, j, m) {
+          var cacheKey = j + ":" + m;
+          if (mediaCache[cacheKey]) {
+            var cachedImg = el.querySelector("img") || el.querySelector("div");
+            if (cachedImg) {
+              var readyImg = document.createElement("img");
+              readyImg.src = mediaCache[cacheKey];
+              readyImg.className = "sticker-img";
+              readyImg.style.cssText = "max-width:220px;max-height:220px;border-radius:8px;";
+              cachedImg.replaceWith(readyImg);
+            }
+            return;
+          }
           window.chatAPI.downloadMedia(j, m).then(function (r) {
             if (r.success) {
               var img = el.querySelector("img") || el.querySelector("div");
               if (img) {
                 var newImg = document.createElement("img");
-                newImg.src = "data:" + r.mimetype + ";base64," + r.data;
+                newImg.src = r.filePath ? fileUrl(r.filePath) : "data:" + r.mimetype + ";base64," + r.data;
+                mediaCache[cacheKey] = newImg.src;
                 newImg.className = "sticker-img";
                 newImg.style.cssText =
                   "max-width:220px;max-height:220px;border-radius:8px;";
                 img.replaceWith(newImg);
+              }
+              if (
+                waSettings.media &&
+                waSettings.media.autoDownloadStickers &&
+                msg.key &&
+                !msg.key.fromMe &&
+                window.chatAPI.saveSticker
+              ) {
+                window.chatAPI.saveSticker(j, m, getChatDisplayName(j)).catch(function () {});
               }
             }
           });
@@ -1528,6 +1944,10 @@ function renderMessageBubbles(c, msgs) {
         (activeChat || "") +
         '" data-mid="' +
         (msg.key ? msg.key.id : "") +
+        '" data-name="' +
+        escHtml(fileName) +
+        '" data-mime="' +
+        escHtml(mime) +
         '">' +
         '<div class="doc-icon">' +
         (mime.indexOf("pdf") !== -1 ? "PDF" : "DOC") +
@@ -1536,11 +1956,18 @@ function renderMessageBubbles(c, msgs) {
         escHtml(fileName) +
         '</div><div class="doc-sub">' +
         escHtml([pages, mime].filter(Boolean).join(" · ")) +
-        "</div></div>" +
+        '</div><div class="doc-inline-status">Clique para abrir</div></div>' +
         '</div><div class="msg-time">' +
         time +
         "</div>";
       c.appendChild(d);
+      var docWrap = d.querySelector(".msg-doc-wrap");
+      docWrap.addEventListener("click", function () {
+        openDocumentModal(this.dataset.jid, this.dataset.mid, this.dataset.name, this.dataset.mime);
+      });
+      if (mime.indexOf("pdf") !== -1 && waSettings.previews && waSettings.previews.pdf) {
+        loadDocumentPreview(docWrap);
+      }
     } else {
       var text =
         mc.conversation ||
@@ -1556,6 +1983,7 @@ function renderMessageBubbles(c, msgs) {
         senderHtml +
         quotedHtml +
         formatMessageText(text, msg) +
+        renderLinkPreviewSnippet(text, activeChat, msg.key ? msg.key.id : "") +
         '<div class="msg-time">' +
         time +
         "</div>";
@@ -1677,6 +2105,26 @@ function showMessageContextMenu(e, msg, mEl) {
     toast(r && r.success ? "Mensagem encaminhada" : (r && r.error) || "Erro ao encaminhar", r && r.success ? "s" : "e");
   };
 
+  var stickerBtn = null;
+  if (msg.message && msg.message.stickerMessage) {
+    stickerBtn = document.createElement("div");
+    stickerBtn.innerHTML = "🌟 <span>Salvar figurinha</span>";
+    stickerBtn.className = "context-menu-item";
+    stickerBtn.onclick = function () {
+      menu.remove();
+      activeMsgContextMenu = null;
+      if (!activeChat) return;
+      window.chatAPI.saveSticker(activeChat, msg.key && msg.key.id, getChatDisplayName(activeChat)).then(function (r) {
+        if (r && r.success) {
+          toast("Figurinha salva", "s");
+          renderWaSettings();
+        } else {
+          toast((r && r.error) || "Erro ao salvar figurinha", "e");
+        }
+      });
+    };
+  }
+
   var funnelBtn = document.createElement("div");
   funnelBtn.innerHTML = "⚡ <span>Salvar no funil</span>";
   funnelBtn.className = "context-menu-item";
@@ -1689,6 +2137,7 @@ function showMessageContextMenu(e, msg, mEl) {
   menu.appendChild(replyBtn);
   menu.appendChild(reactBtn);
   menu.appendChild(forwardBtn);
+  if (stickerBtn) menu.appendChild(stickerBtn);
   menu.appendChild(funnelBtn);
   menu.appendChild(deleteBtn);
   document.body.appendChild(menu);
@@ -1735,7 +2184,7 @@ function bindAudioPlayer(el, jid, mid) {
         if (!dataUrl) {
           var r = await window.chatAPI.downloadMedia(jid, mid);
           if (r.success) {
-            dataUrl = "data:" + r.mimetype + ";base64," + r.data;
+            dataUrl = r.filePath ? fileUrl(r.filePath) : "data:" + r.mimetype + ";base64," + r.data;
             mediaCache[cacheKey] = dataUrl;
           } else {
             btn.textContent = "▶";
@@ -1792,7 +2241,7 @@ function openFullImage(jid, mid, thumbImg) {
   } else {
     window.chatAPI.downloadMedia(jid, mid).then(function (r) {
       if (r.success) {
-        var url = "data:" + r.mimetype + ";base64," + r.data;
+        var url = r.filePath ? fileUrl(r.filePath) : "data:" + r.mimetype + ";base64," + r.data;
         mediaCache[cacheKey] = url;
         var img = modal.querySelector("img");
         var loading = modal.querySelector(".media-modal-loading");
@@ -1835,7 +2284,7 @@ function openVideoModal(jid, mid, thumbImg) {
   } else {
     window.chatAPI.downloadMedia(jid, mid).then(function (r) {
       if (r.success) {
-        var url = "data:" + r.mimetype + ";base64," + r.data;
+        var url = r.filePath ? fileUrl(r.filePath) : "data:" + r.mimetype + ";base64," + r.data;
         mediaCache[cacheKey] = url;
         setVideo(url);
       } else {
@@ -2217,6 +2666,77 @@ async function attachSticker(jid) {
     await selectChat(jid, true);
     scrollToBottom();
   } else toast(r.error || "Erro ao enviar figurinha", "e");
+}
+
+async function showStickerTray(jid, anchor) {
+  if (activeStickerTray) {
+    activeStickerTray.remove();
+    activeStickerTray = null;
+  }
+  var tray = document.createElement("div");
+  tray.className = "sticker-tray";
+  tray.innerHTML =
+    '<div class="sticker-tray-head"><strong>Figurinhas</strong><button class="sticker-file-btn">Arquivo</button></div><div class="sticker-tray-grid"><span class="wa-settings-empty">Carregando...</span></div>';
+  document.body.appendChild(tray);
+  activeStickerTray = tray;
+  var rect = anchor ? anchor.getBoundingClientRect() : { left: 12, top: window.innerHeight - 80 };
+  tray.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 320)) + "px";
+  tray.style.top = Math.max(70, rect.top - 300) + "px";
+  tray.querySelector(".sticker-file-btn").addEventListener("click", function () {
+    tray.remove();
+    activeStickerTray = null;
+    attachSticker(jid);
+  });
+  try {
+    var r = await window.chatAPI.listStickers();
+    stickerLibrary = (r && r.stickers) || [];
+  } catch (e) {
+    stickerLibrary = [];
+  }
+  var grid = tray.querySelector(".sticker-tray-grid");
+  if (!stickerLibrary.length) {
+    grid.innerHTML =
+      '<div class="sticker-empty"><span>Nenhuma figurinha salva.</span><button class="sticker-file-btn-inline">Escolher WebP</button></div>';
+    grid.querySelector(".sticker-file-btn-inline").addEventListener("click", function () {
+      tray.remove();
+      activeStickerTray = null;
+      attachSticker(jid);
+    });
+  } else {
+    grid.innerHTML = stickerLibrary
+      .map(function (s) {
+        return (
+          '<button class="sticker-pick" title="' +
+          escHtml(s.name || s.id) +
+          '" data-id="' +
+          escHtml(s.id) +
+          '"><img src="' +
+          escHtml(fileUrl(s.filePath)) +
+          '"></button>'
+        );
+      })
+      .join("");
+    grid.querySelectorAll(".sticker-pick").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = this.dataset.id;
+        tray.remove();
+        activeStickerTray = null;
+        window.chatAPI.sendSavedSticker(jid, id).then(function (res) {
+          if (res && res.success) selectChat(jid, true);
+          else toast((res && res.error) || "Erro ao enviar figurinha", "e");
+        });
+      });
+    });
+  }
+  setTimeout(function () {
+    document.addEventListener("click", function closeTray(ev) {
+      if (tray && !tray.contains(ev.target) && ev.target !== anchor) {
+        tray.remove();
+        activeStickerTray = null;
+        document.removeEventListener("click", closeTray);
+      }
+    });
+  }, 20);
 }
 
 function openEmojiPicker(input) {

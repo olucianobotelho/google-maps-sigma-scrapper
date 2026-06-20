@@ -9,7 +9,10 @@ class CampaignManager {
     this.onProgress = null;
     // Reverse index: messageId -> { campaignId, leadIndex }
     this._messageIndex = new Map();
+    // Reverse index: phoneDigits -> [{ campaignId, leadIndex }] for O(1) reply matching
+    this._phoneIndex = new Map();
     this._rebuildMessageIndex();
+    this._rebuildPhoneIndex();
   }
 
   _rebuildMessageIndex() {
@@ -18,6 +21,34 @@ class CampaignManager {
       (campaign.leads || []).forEach((lead, idx) => {
         if (lead.messageId) {
           this._messageIndex.set(lead.messageId, { campaignId: campaign.id, leadIndex: idx });
+        }
+      });
+    }
+  }
+
+  _digits(phone) {
+    return String(phone || '').replace(/\D/g, '');
+  }
+
+  _phoneKeys(phone) {
+    const digits = this._digits(phone);
+    if (!digits) return [];
+    const keys = new Set([digits]);
+    if (digits.startsWith('55') && digits.length > 12) {
+      keys.add(digits.slice(2));
+    } else if (digits.length >= 10 && digits.length <= 11) {
+      keys.add(`55${digits}`);
+    }
+    return [...keys];
+  }
+
+  _rebuildPhoneIndex() {
+    this._phoneIndex.clear();
+    for (const campaign of this.store.getAll()) {
+      (campaign.leads || []).forEach((lead, idx) => {
+        for (const d of this._phoneKeys(lead.phone)) {
+          if (!this._phoneIndex.has(d)) this._phoneIndex.set(d, []);
+          this._phoneIndex.get(d).push({ campaignId: campaign.id, leadIndex: idx });
         }
       });
     }
@@ -39,11 +70,16 @@ class CampaignManager {
   }
 
   create(campaignData) {
-    return this.store.create(campaignData);
+    const campaign = this.store.create(campaignData);
+    this._rebuildPhoneIndex();
+    return campaign;
   }
 
   update(id, updates) {
-    return this.store.update(id, updates);
+    const campaign = this.store.update(id, updates);
+    this._rebuildMessageIndex();
+    this._rebuildPhoneIndex();
+    return campaign;
   }
 
   delete(id) {
@@ -54,7 +90,9 @@ class CampaignManager {
         if (lead.messageId) this._messageIndex.delete(lead.messageId);
       }
     }
-    return this.store.delete(id);
+    const result = this.store.delete(id);
+    this._rebuildPhoneIndex();
+    return result;
   }
 
   autoResume() {
@@ -116,6 +154,22 @@ class CampaignManager {
     this.start(campaignId);
   }
 
+  /** Reset failed leads back to pending and (re)start the scheduler. */
+  retryFailed(campaignId) {
+    if (!this.scheduler) {
+      if (!this.provider || this.provider.getStatus() !== 'connected') {
+        throw new Error('WhatsApp not connected');
+      }
+      const { CampaignScheduler } = require('./campaign-scheduler');
+      this.scheduler = new CampaignScheduler(this.provider, this.store, this.onProgress, this);
+    }
+    const count = this.scheduler.retryFailed(campaignId);
+    if (count > 0 && this.onProgress) {
+      this.onProgress(campaignId, 'retry-queued', { count });
+    }
+    return count;
+  }
+
   trackMessageStatus(messageId, status) {
     if (!messageId || !status) return null;
     
@@ -150,14 +204,17 @@ class CampaignManager {
     if (!jid || message?.key?.fromMe) return null;
     const digits = String(jid).replace(/@.*$/, '').replace(/\D/g, '');
     if (!digits) return null;
-    let changed = null;
+
     const now = Date.now();
-    for (const campaign of this.store.getAll()) {
-      const lead = (campaign.leads || []).find(l => {
-        const leadDigits = String(l.phone || '').replace(/\D/g, '');
-        return leadDigits && leadDigits === digits && l.sentAt && !l.repliedAt;
-      });
+    const entries = this._phoneKeys(digits).flatMap((key) => this._phoneIndex.get(key) || []);
+    let changed = null;
+    for (const entry of entries) {
+      const campaign = this.store.get(entry.campaignId);
+      if (!campaign) continue;
+      const lead = campaign.leads && campaign.leads[entry.leadIndex];
       if (!lead) continue;
+      if (!lead.sentAt || lead.repliedAt) continue;
+
       lead.repliedAt = now;
       lead.responseTimeMs = Math.max(0, now - lead.sentAt);
       lead.status = 'replied';
@@ -172,6 +229,9 @@ class CampaignManager {
   shutdown() {
     if (this.scheduler) {
       this.scheduler.stop();
+    }
+    if (this.store && this.store.flush) {
+      this.store.flush();
     }
   }
 }

@@ -5,6 +5,12 @@ var waQrInterval = null;
 var waConnections = [];
 var activeWaConnectionId = null;
 
+function escapeWaHtml(value) {
+  const div = document.createElement("div");
+  div.textContent = value || "";
+  return div.innerHTML;
+}
+
 async function refreshWaConnections() {
   if (!window.whatsappAPI.listConnections) return;
   const res = await window.whatsappAPI.listConnections();
@@ -41,8 +47,8 @@ async function renderWaConnect() {
                   (c) => `
             <button class="wa-connection-pill ${c.active ? "active" : ""}" data-id="${c.id}">
               <span>${c.connected ? "🟢" : "🔴"}</span>
-              <strong>${connectionLabel(c)}</strong>
-              <small>${c.provider}</small>
+              <strong>${escapeWaHtml(connectionLabel(c))}</strong>
+              <small>${escapeWaHtml(c.provider)}</small>
             </button>`,
                 )
                 .join("")
@@ -54,7 +60,7 @@ async function renderWaConnect() {
       <h4>🔌 ${t("wa_connection")}</h4>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
         <span class="wa-status ${statusCls}">${dot} ${statusTxt}</span>
-        ${waPhoneNumber ? `<span style="font-size:11px;color:var(--text2);">${waPhoneNumber}</span>` : ""}
+        ${waPhoneNumber ? `<span style="font-size:11px;color:var(--text2);">${escapeWaHtml(waPhoneNumber)}</span>` : ""}
       </div>
 
       <label>${t("wa_provider")}</label>
@@ -240,7 +246,7 @@ window.whatsappAPI.onStatus(async ({ status, data }) => {
         : status === "connected"
           ? "var(--green)"
           : "var(--text2)";
-    logEl.innerHTML += `<div style="color:${color};font-size:11px;margin:2px 0;">[${time}] ${msg}</div>`;
+    logEl.innerHTML += `<div style="color:${color};font-size:11px;margin:2px 0;">[${escapeWaHtml(time)}] ${escapeWaHtml(msg)}</div>`;
     logEl.scrollTop = logEl.scrollHeight;
   }
 

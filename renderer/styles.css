@@ -1142,6 +1142,10 @@ body {
     background: #202c33;
     color: #8696a0;
     transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
 }
 .chat-filter-tab:hover {
     background: #2a3942;
@@ -1151,6 +1155,22 @@ body {
     background: #00a884;
     color: #111b21;
     font-weight: 600;
+}
+.chat-filter-count {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    color: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    line-height: 1;
+}
+.chat-filter-tab.active .chat-filter-count {
+    background: rgba(17, 27, 33, 0.14);
 }
 
 /* Archived row */
@@ -1499,6 +1519,157 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+.wa-sticker-library {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px;
+    overflow: auto;
+}
+.wa-sticker-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+.wa-sticker-row img {
+    width: 44px;
+    height: 44px;
+    object-fit: cover;
+    border-radius: 8px;
+    flex-shrink: 0;
+    background: var(--surface2);
+}
+.wa-sticker-meta {
+    flex: 1;
+    min-width: 0;
+}
+.wa-sticker-meta strong,
+.wa-sticker-meta small {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.wa-sticker-meta strong {
+    color: var(--text);
+    font-size: 12px;
+}
+.wa-sticker-meta small {
+    color: var(--text2);
+    font-size: 10px;
+}
+.sticker-tray {
+    position: fixed;
+    z-index: 2200;
+    width: 312px;
+    max-height: 320px;
+    background: #111b21;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+.sticker-tray-head {
+    height: 42px;
+    padding: 0 10px 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+}
+.sticker-tray-head strong {
+    color: var(--text);
+    font-size: 13px;
+}
+.sticker-file-btn,
+.sticker-file-btn-inline {
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 8px;
+    cursor: pointer;
+    font-size: 11px;
+}
+.sticker-tray-grid {
+    padding: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    overflow: auto;
+    max-height: 278px;
+}
+.sticker-pick {
+    aspect-ratio: 1;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: var(--surface2);
+    padding: 4px;
+    cursor: pointer;
+}
+.sticker-pick:hover {
+    border-color: var(--accent2);
+    background: #202c33;
+}
+.sticker-pick img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.sticker-empty {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
+    color: var(--text2);
+    font-size: 12px;
+}
+.link-preview {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+    cursor: pointer;
+}
+.lp-domain {
+    color: var(--accent2);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 4px;
+}
+.lp-title {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 4px;
+}
+.lp-desc {
+    color: var(--text2);
+    font-size: 11px;
+    line-height: 1.35;
+}
+.doc-inline-status {
+    color: var(--text2);
+    font-size: 10px;
+    margin-top: 4px;
+}
+.doc-inline-preview {
+    flex: 0 0 100%;
+    width: 100%;
+    height: 150px;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
 }
 
 .campaign-shell,
@@ -2563,6 +2734,7 @@ body {
 .msg-doc-wrap {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
     width: 300px;
     max-width: 64vw;
@@ -2672,6 +2844,32 @@ body {
 }
 .fullscreen-image-modal .fs-close:hover {
     background: rgba(255, 255, 255, 0.2);
+}
+.document-modal .doc-modal-shell {
+    width: min(92vw, 980px);
+    height: min(88vh, 860px);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.document-modal iframe {
+    flex: 1;
+    width: 100%;
+    border: 0;
+    border-radius: 10px;
+    background: #fff;
+}
+.doc-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #d1d7db;
+    font-size: 12px;
+}
+.doc-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .msg-sticker-wrap {
     max-width: 230px;

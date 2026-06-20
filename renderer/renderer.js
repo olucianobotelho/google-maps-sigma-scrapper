@@ -333,6 +333,7 @@ function playDone() {
 // ─── DOM ───────────────────────────────────
 const $ = (id) => document.getElementById(id);
 let cancelled = false;
+let activeScrapeId = null;
 let activeSearchId = "__all__";
 let renameTargetId = null;
 
@@ -383,6 +384,15 @@ function escapeHtml(value) {
   const div = document.createElement("div");
   div.textContent = value || "";
   return div.innerHTML;
+}
+
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch (e) {
+    return "";
+  }
 }
 
 function searchAcronym(label) {
@@ -457,17 +467,19 @@ function updateUI() {
   $("tableBody").innerHTML = "";
   list.forEach((item, idx) => {
     const rating = item.rating
-      ? `<span class="rate">${item.rating} ★</span>`
+      ? `<span class="rate">${escapeHtml(item.rating)} ★</span>`
       : "-";
-    const web = item.website
-      ? `<a href="${item.website}" target="_blank">🔗</a>`
+    const websiteUrl = safeExternalUrl(item.website);
+    const instagramUrl = safeExternalUrl(item.instagram);
+    const web = websiteUrl
+      ? `<a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener noreferrer">🔗</a>`
       : "-";
-    const ig = item.instagram
-      ? `<a href="${item.instagram}" target="_blank">📷</a>`
+    const ig = instagramUrl
+      ? `<a href="${escapeHtml(instagramUrl)}" target="_blank" rel="noopener noreferrer">📷</a>`
       : "-";
-    const em = item.email ? `<span title="${item.email}">✉️</span>` : "-";
+    const em = item.email ? `<span title="${escapeHtml(item.email)}">✉️</span>` : "-";
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${idx + 1}</td><td><strong>${item.name || "-"}</strong></td><td>${item.category || "-"}</td><td>${rating}</td><td>${item.totalReviews || "-"}</td><td>${item.phone || "-"}</td><td>${web}</td><td>${ig}</td><td>${em}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${item.address || ""}">${item.address || "-"}</td>`;
+    tr.innerHTML = `<td>${idx + 1}</td><td><strong>${escapeHtml(item.name || "-")}</strong></td><td>${escapeHtml(item.category || "-")}</td><td>${rating}</td><td>${escapeHtml(item.totalReviews || "-")}</td><td>${escapeHtml(item.phone || "-")}</td><td>${web}</td><td>${ig}</td><td>${em}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(item.address || "")}">${escapeHtml(item.address || "-")}</td>`;
     $("tableBody").appendChild(tr);
   });
 
@@ -504,10 +516,16 @@ function populateCategoryFilter() {
   all.forEach((l) => {
     if (l.category) cats.add(l.category);
   });
-  $("filterCategory").innerHTML =
-    `<option value="all">${t("filter_cat")}</option>`;
+  $("filterCategory").innerHTML = "";
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = t("filter_cat");
+  $("filterCategory").appendChild(allOption);
   [...cats].sort().forEach((c) => {
-    $("filterCategory").innerHTML += `<option value="${c}">${c}</option>`;
+    const option = document.createElement("option");
+    option.value = c;
+    option.textContent = c;
+    $("filterCategory").appendChild(option);
   });
 }
 
@@ -543,7 +561,7 @@ function renderQueue() {
   queue.forEach((q, i) => {
     const div = document.createElement("div");
     div.className = "q-item";
-    div.innerHTML = `<span>${q.niche} • ${q.neigh} • ${q.city} (${q.max} resultados)</span><button data-idx="${i}">✕</button>`;
+    div.innerHTML = `<span>${escapeHtml(q.niche)} • ${escapeHtml(q.neigh)} • ${escapeHtml(q.city)} (${escapeHtml(q.max)} resultados)</span><button data-idx="${i}">✕</button>`;
     div.querySelector("button").addEventListener("click", () => {
       queue.splice(i, 1);
       save();
@@ -596,9 +614,11 @@ $("processBtn").addEventListener("click", async () => {
     if (cancelled) break;
     const q = queue[qi];
     const qstr = `${q.niche} ${q.neigh} ${q.city}`;
+    activeScrapeId = `${searchId}_${qi}`;
     log(`[${qi + 1}/${queue.length}] ${t("searching")} "${qstr}"`);
 
-    const result = await window.electronAPI.startScrape(qstr, q.max);
+    const result = await window.electronAPI.startScrape(qstr, q.max, activeScrapeId);
+    activeScrapeId = null;
     if (cancelled) break;
 
     if (result.success && result.data.length > 0) {
@@ -655,9 +675,13 @@ window.electronAPI.onProgress((msg) => {
 // ─── EVENTS ────────────────────────────────
 $("cancelBtn").addEventListener("click", () => {
   cancelled = true;
+  window.electronAPI.cancelScrape?.(activeScrapeId).catch(() => {});
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") cancelled = true;
+  if (e.key === "Escape") {
+    cancelled = true;
+    window.electronAPI.cancelScrape?.(activeScrapeId).catch(() => {});
+  }
 });
 
 $("btnMin").addEventListener("click", () => window.electronAPI.winMinimize());
@@ -779,7 +803,7 @@ function renderDashboard() {
       .map(
         ([name, count]) => `
     <div class="cat-row">
-      <span class="cat-name">${name}</span>
+      <span class="cat-name">${escapeHtml(name)}</span>
       <div class="cat-bar"><div class="bar-wrap"><div class="bar-fill" style="width:${Math.round((count / maxCat) * 100)}%;background:var(--accent);"></div></div></div>
       <span class="cat-count">${count}</span>
     </div>
@@ -794,7 +818,7 @@ function renderDashboard() {
     recent
       .map(
         (s) => `
-    <div class="hist-item"><span class="hq">🔍 ${s.label || s.query}</span><span class="hc">${leads.filter((l) => l.searchId === s.id).length} leads</span></div>
+    <div class="hist-item"><span class="hq">🔍 ${escapeHtml(s.label || s.query)}</span><span class="hc">${leads.filter((l) => l.searchId === s.id).length} leads</span></div>
   `,
       )
       .join("") ||
@@ -875,7 +899,7 @@ function switchWaTab(tab) {
   if (tab === "connect") renderWaConnect();
   if (tab === "campaigns") renderWaCampaigns();
   if (tab === "monitor") renderMonitorCampaignList();
-  if (tab === "chats") renderChatList();
+  if (tab === "chats") { if (!document.getElementById("chatSidebar")) renderChatList(); else refreshChats(); }
   if (tab === "settings" && typeof renderWaSettings === "function")
     renderWaSettings();
 }

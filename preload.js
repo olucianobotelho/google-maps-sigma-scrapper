@@ -1,8 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
-  startScrape: (query, maxResults) =>
-    ipcRenderer.invoke("start-scrape", { query, maxResults }),
+  startScrape: (query, maxResults, queryId) =>
+    ipcRenderer.invoke("start-scrape", { query, maxResults, queryId }),
+  cancelScrape: (queryId) =>
+    ipcRenderer.invoke("cancel-scrape", { queryId }),
   exportLeads: (leads, format) =>
     ipcRenderer.invoke("export-leads", { leads, format }),
   deleteTempFiles: () => ipcRenderer.invoke("delete-temp-files"),
@@ -38,6 +40,7 @@ contextBridge.exposeInMainWorld("campaignAPI", {
   start: (id) => ipcRenderer.invoke("campaign-start", { id }),
   pause: (id) => ipcRenderer.invoke("campaign-pause", { id }),
   resume: (id) => ipcRenderer.invoke("campaign-resume", { id }),
+  retryFailed: (id) => ipcRenderer.invoke("campaign-retry-failed", { id }),
   getAll: () => ipcRenderer.invoke("campaign-get-all"),
   get: (id) => ipcRenderer.invoke("campaign-get", { id }),
   export: (id, format) => ipcRenderer.invoke("campaign-export", { id, format }),
@@ -52,6 +55,11 @@ contextBridge.exposeInMainWorld("campaignAPI", {
 contextBridge.exposeInMainWorld("chatAPI", {
   getChats: () => ipcRenderer.invoke("whatsapp-get-chats"),
   getArchivedChats: () => ipcRenderer.invoke("whatsapp-get-archived-chats"),
+  getSettings: () => ipcRenderer.invoke("whatsapp-get-settings"),
+  updateSettings: (patch) =>
+    ipcRenderer.invoke("whatsapp-update-settings", { patch }),
+  startChat: (phone, name) =>
+    ipcRenderer.invoke("whatsapp-start-chat", { phone, name }),
   getMessages: (jid) => ipcRenderer.invoke("whatsapp-get-messages", { jid }),
   getProfilePic: (jid) =>
     ipcRenderer.invoke("whatsapp-get-profile-pic", { jid }),
@@ -80,6 +88,13 @@ contextBridge.exposeInMainWorld("chatAPI", {
     ipcRenderer.invoke("whatsapp-forward-message", { fromJid, messageId, toJid }),
   downloadMedia: (jid, messageId) =>
     ipcRenderer.invoke("whatsapp-download-media", { jid, messageId }),
+  getLinkPreview: (url) =>
+    ipcRenderer.invoke("whatsapp-get-link-preview", { url }),
+  saveSticker: (jid, messageId, name) =>
+    ipcRenderer.invoke("whatsapp-save-sticker", { jid, messageId, name }),
+  listStickers: () => ipcRenderer.invoke("whatsapp-list-stickers"),
+  sendSavedSticker: (to, stickerId) =>
+    ipcRenderer.invoke("whatsapp-send-saved-sticker", { to, stickerId }),
   openFile: (filters) => ipcRenderer.invoke("dialog-open-file", { filters }),
   onMessage: (callback) =>
     ipcRenderer.on("whatsapp-message-received", (_, data) => callback(data)),

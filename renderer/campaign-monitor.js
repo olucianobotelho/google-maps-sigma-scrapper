@@ -61,6 +61,7 @@ function buildMonitorUI(panel, campaign) {
         ${campaign.status === "scheduled" ? `<button class="btn btn1" id="waMonStartNow">Iniciar agora</button>` : ""}
         ${campaign.status === "running" || campaign.status === "scheduled" ? `<button class="btn btn2" id="waMonPause">${t("wa_pause")}</button>` : ""}
         ${campaign.status === "paused" ? `<button class="btn btn1" id="waMonResume">${t("wa_resume")}</button>` : ""}
+        ${(stats.failed || 0) > 0 ? `<button class="btn btn2" id="waMonRetryFailed" title="Reenvia leads que falharam">↻ Reenviar ${stats.failed} falha(s)</button>` : ""}
         ${["running", "paused", "scheduled"].includes(campaign.status) ? `<button class="btn btn3" id="waMonCancel">${t("wa_cancel")}</button>` : ""}
         ${!["running", "paused", "scheduled"].includes(campaign.status) ? `<button class="btn btn3" id="waMonDelete">${t("wa_delete")}</button>` : ""}
       </div>
@@ -165,6 +166,17 @@ function buildMonitorUI(panel, campaign) {
     const res = await window.campaignAPI.resume(campaign.id);
     toast(res.success ? "Campanha retomada" : res.error || "Erro ao retomar", res.success ? "s" : "e");
     renderWaMonitor(campaign.id);
+  });
+
+  document.getElementById("waMonRetryFailed")?.addEventListener("click", async () => {
+    if (!confirm(`Reenviar os ${stats.failed} leads que falharam?`)) return;
+    const res = await window.campaignAPI.retryFailed(campaign.id);
+    if (res.success) {
+      toast(`${res.count} lead(s) recolocado(s) na fila`, "s");
+      renderWaMonitor(campaign.id);
+    } else {
+      toast(res.error || "Erro ao reenviar falhas", "e");
+    }
   });
 
   document.getElementById("waMonCancel")?.addEventListener("click", async () => {

@@ -2,18 +2,46 @@ const { chromium } = require('playwright');
 const CONFIG = require('./config');
 const { extractBusinessData } = require('./utils/businessData');
 
-async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = console.log) {
+function checkCancelled(cancelToken) {
+  if (cancelToken?.cancelled) {
+    const err = new Error('Scrape cancelled');
+    err.code = 'SCRAPE_CANCELLED';
+    throw err;
+  }
+}
+
+async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = console.log, cancelToken = null) {
   onProgress('Launching browser...');
-  const browser = await chromium.launch({ headless: CONFIG.HEADLESS, channel: 'chrome' });
+  let browser;
+  const launchAttempts = [
+    { headless: CONFIG.HEADLESS, channel: 'chrome' },
+    { headless: CONFIG.HEADLESS },
+  ];
+  let launchError;
+  for (const opts of launchAttempts) {
+    try {
+      browser = await chromium.launch(opts);
+      break;
+    } catch (e) {
+      launchError = e;
+      onProgress(`Browser launch attempt failed (${opts.channel || 'bundled'}): ${e.message}`);
+    }
+  }
+  if (!browser) {
+    throw new Error(`Falha ao abrir navegador. Verifique se o Chrome está instalado. Detalhes: ${launchError?.message || 'unknown'}`);
+  }
   const places = [];
   const statistics = { withPhone: 0, withWebsite: 0, withInstagram: 0, withEmail: 0, withRating: 0, withPhotos: 0 };
+  let context;
+  let page;
 
   try {
-    const context = await browser.newContext({
+    checkCancelled(cancelToken);
+    context = await browser.newContext({
       userAgent: CONFIG.USER_AGENT,
       viewport: { width: 1366, height: 768 }
     });
-    const page = await context.newPage();
+    page = await context.newPage();
 
     if (CONFIG.REQUEST_BLOCK_TYPES.length > 0) {
       await page.route('**/*', (route) => {
@@ -27,8 +55,10 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
     }
 
     const encodedQuery = encodeURIComponent(searchQuery);
+    checkCancelled(cancelToken);
     await gotoWithRetry(page, `https://www.google.com/maps/search/${encodedQuery}`, onProgress);
     await page.waitForTimeout(CONFIG.INITIAL_WAIT);
+    checkCancelled(cancelToken);
 
     try {
       const btn = page.locator('button:has-text("Accept all"), button:has-text("Aceitar todos")').first();
@@ -41,6 +71,7 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
     onProgress('Loading results...');
     let prev = 0, stuck = 0;
     while (stuck < CONFIG.SEARCH_DEPTH) {
+      checkCancelled(cancelToken);
       await page.evaluate(() => { const f = document.querySelector('div[role="feed"]'); if (f) f.scrollTop = f.scrollHeight; });
       await page.waitForTimeout(CONFIG.SCROLL_DELAY);
       const count = await page.locator('a[href*="/maps/place/"]').count();
@@ -56,8 +87,10 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
 
     for (let i = 0; i < total; i++) {
       try {
+        checkCancelled(cancelToken);
         await listings[i].click();
         await page.waitForTimeout(600);
+        checkCancelled(cancelToken);
 
         const place = await extractBusinessData(page);
 
@@ -73,7 +106,8 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
           }
 
           if (place.website && !place.website.includes('instagram.com') && !place.website.includes('facebook.com') && !place.website.includes('youtube.com')) {
-            place.email = await scrapeEmails(browser, place.website, onProgress);
+            checkCancelled(cancelToken);
+            place.email = await scrapeEmails(browser, place.website, onProgress, cancelToken);
           } else {
             place.email = '';
           }
@@ -99,8 +133,19 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
     await page.close();
     await context.close();
   } catch (e) {
+    if (e.code === 'SCRAPE_CANCELLED') {
+      onProgress('Scrape cancelled.');
+      throw e;
+    }
     onProgress(`Error: ${e.message}`);
+    if (places.length === 0) {
+      return { success: false, error: e.message, data: [], count: 0, statistics };
+    }
+    statistics.total = places.length;
+    return { success: true, partial: true, warnings: [e.message], data: places, count: places.length, statistics };
   } finally {
+    await page?.close?.().catch(() => {});
+    await context?.close?.().catch(() => {});
     await browser.close().catch(() => {});
   }
 
@@ -123,11 +168,13 @@ async function gotoWithRetry(page, url, onProgress) {
   }
 }
 
-async function scrapeEmails(browser, url, onProgress) {
+async function scrapeEmails(browser, url, onProgress, cancelToken = null) {
   const page = await browser.newPage();
   try {
+    checkCancelled(cancelToken);
     await page.goto(url, { timeout: CONFIG.PAGE_TIMEOUT, waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
+    checkCancelled(cancelToken);
 
     const emails = await page.evaluate(() => {
       const found = new Set();
@@ -149,6 +196,7 @@ async function scrapeEmails(browser, url, onProgress) {
     return emails.join(', ');
   } catch (e) {
     await page.close().catch(() => {});
+    if (e.code === 'SCRAPE_CANCELLED') throw e;
     return '';
   }
 }

@@ -83,9 +83,28 @@ function refreshCampaignList() {
 }
 
 function normalizeManualPhone(value) {
-  const digits = String(value || "").replace(/\D/g, "");
-  if (!digits) return "";
-  return digits.startsWith("55") ? `+${digits}` : `+55${digits}`;
+  // Strip everything but digits and a leading +, so callers can pass
+  // "+1 555..." or "55 21 9..." without us mangling international numbers.
+  let raw = String(value || "").replace(/[^\d+]/g, "");
+  if (!raw) return "";
+  // Already fully qualified (e.g. +1..., +55...) -> keep digits after +
+  if (raw.startsWith("+")) {
+    const digits = raw.slice(1);
+    if (digits.length >= 10 && digits.length <= 15) return "+" + digits;
+    return "";
+  }
+  // No explicit +: assume Brazilian (DDI 55) only when it doesn't already
+  // start with a country code. We detect "starts with 55 and has 12-13 digits"
+  // as already carrying the BR DDI; otherwise prepend 55.
+  if (raw.length >= 12 && raw.length <= 13 && raw.startsWith("55")) {
+    return "+" + raw;
+  }
+  if (raw.length >= 10 && raw.length <= 11) {
+    return "+55" + raw;
+  }
+  // Anything else with a plausible length is treated as already international.
+  if (raw.length >= 10 && raw.length <= 15) return "+" + raw;
+  return "";
 }
 
 function saveManualLeadGroup(name, rawPhones) {
@@ -380,7 +399,7 @@ function showNewCampaignForm() {
       name,
       provider: window.waProviderType || "baileys",
       connectionId: selectedConnection,
-      template: { text: templateData.text, variables: templateData.variables },
+      template: { text: templateData.text, variables: templateData.variables, media: templateData.media || null },
       leadIds: selectedLeads,
       schedule: {
         mode: document.getElementById("waScheduleMode").value,

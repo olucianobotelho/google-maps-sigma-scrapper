@@ -11,15 +11,33 @@ class CampaignStore {
   _load() {
     if (fs.existsSync(this.filePath)) {
       try { return JSON.parse(fs.readFileSync(this.filePath, 'utf-8')); }
-      catch { return {}; }
+      catch (e) {
+        const corruptPath = `${this.filePath}.corrupt-${Date.now()}`;
+        try { fs.renameSync(this.filePath, corruptPath); }
+        catch {}
+        console.log('[CAMPAIGN-STORE] Corrupt store preserved:', corruptPath);
+        return {};
+      }
     }
     return {};
+  }
+
+  _writeAtomic() {
+    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+    const tmpPath = `${this.filePath}.tmp`;
+    const bakPath = `${this.filePath}.bak`;
+    fs.writeFileSync(tmpPath, JSON.stringify(this.campaigns, null, 2), { mode: 0o600 });
+    if (fs.existsSync(this.filePath)) {
+      try { fs.copyFileSync(this.filePath, bakPath); }
+      catch {}
+    }
+    fs.renameSync(tmpPath, this.filePath);
   }
 
   _save() {
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = null;
-    fs.writeFileSync(this.filePath, JSON.stringify(this.campaigns, null, 2), { mode: 0o600 });
+    this._writeAtomic();
   }
 
   // Debounced save for frequent tracking updates (delivered/read status)
@@ -28,7 +46,7 @@ class CampaignStore {
     this._saveTimer = setTimeout(() => {
       this._saveTimer = null;
       try {
-        fs.writeFileSync(this.filePath, JSON.stringify(this.campaigns, null, 2), { mode: 0o600 });
+        this._writeAtomic();
       } catch (e) {
         console.log('[CAMPAIGN-STORE] Save error:', e.message);
       }
@@ -44,10 +62,12 @@ class CampaignStore {
       provider: data.provider,
       connectionId: data.connectionId || null,
       template: data.template,
+      media: (data.template && data.template.media) || null,
       leads: (data.leadIds || []).map(lid => ({
         leadId: lid.leadId || lid,
         name: lid.name || '',
         phone: lid.phone || '',
+        phoneRaw: lid.phoneRaw || lid.phone || '',
         company: lid.company || '',
         category: lid.category || '',
         website: lid.website || '',
@@ -130,6 +150,14 @@ class CampaignStore {
         ? Math.round(responseTimes.reduce((sum, v) => sum + v, 0) / responseTimes.length)
         : 0,
     };
+  }
+
+  flush() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+      this._writeAtomic();
+    }
   }
 }
 
