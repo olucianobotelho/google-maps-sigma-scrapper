@@ -1,0 +1,146 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * tokens-clarity.css — Sigma Clarity (Light-first) — drop-in tokens
+ * Art direction: Technical clarity workspace — Stripe + Linear, 1 indigo
+ * Import BEFORE styles.css ou substitua o bloco :root / html[data-theme]
+ * ───────────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Primitive — cru, sem semântica */
+:root {
+  /* Palette crua */
+  --indigo-600: #4F46E5;
+  --indigo-500: #6366F1;
+  --indigo-100: #E0E7FF;
+  --indigo-soft: rgba(99,102,241,.08);
+  --slate-900: #0F172A;
+  --slate-700: #334155;
+  --slate-500: #64748B;
+  --slate-300: #CBD5E1;
+  --slate-200: #E2E8F0;
+  --slate-100: #F1F5F9;
+  --slate-50: #F8FAFC;
+  --emerald-600: #059669;
+  --amber-500: #D97706;
+  --red-600: #DC2626;
+
+  /* Motion tokens */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 280ms;
+  --ease-out: cubic-bezier(.16,1,.3,1);
+  --ease-in: cubic-bezier(.4,0,1,1);
+  --ease-spring: cubic-bezier(.34,1.56,.64,1);
+}
+
+/* Semantic — LIGHT FIRST (default) */
+:root {
+  color-scheme: light;
+  --bg: var(--slate-50);                 /* #F8FAFC page */
+  --surface: #FFFFFF;
+  --surface-warm: #F8FAFC;
+  --fg: var(--slate-900);                /* #0F172A */
+  --fg-2: var(--slate-700);
+  --muted: var(--slate-500);
+  --meta: rgba(15,23,42,.42);
+  --border: var(--slate-200);            /* #E2E8F0 */
+  --border-hover: var(--slate-300);
+
+  --accent: var(--indigo-500);           /* #6366F1 */
+  --accent-hover: var(--indigo-600);
+  --accent-active: #4338CA;
+  --accent-soft: var(--indigo-soft);
+  --accent-on: #FFFFFF;
+
+  --success: var(--emerald-600);
+  --danger: var(--red-600);
+  --warn: var(--amber-500);
+
+  /* Type — single family Inter, 14 base */
+  --text-base: 14px;
+  --text-sm: 13px;
+  --text-xs: 11px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 20px;
+  --font-display: "Inter", system-ui, -apple-system, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", Menlo, monospace;
+
+  /* Spacing 4px base */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
+
+  /* Radius moderado — não 24-32 */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* Elevation leve — 1 nível só */
+  --elev-raised: 0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.05);
+  --focus-ring: 0 0 0 3px rgba(99,102,241,.25);
+  --inset-shadow: inset 0 1px 0 rgba(255,255,255,.9);
+
+  /* Surfaces semânticas */
+  --surface-2: var(--slate-100);
+  --hover-bg: var(--slate-100);
+  --track-bg: #E2E8F0;
+  --overlay-soft: rgba(15,23,42,.04);
+  --input-bg: #FFFFFF;
+  --menu-bg: #FFFFFF;
+  --panel-bg: var(--slate-100);
+  --subtle-bg: var(--slate-50);
+  --term-text: var(--slate-700);
+  --bubble-in: #FFFFFF;
+  --bubble-in-border: var(--slate-200);
+  --bubble-out: #EEF2FF; /* indigo-50 */
+  --bubble-out-text: var(--slate-900);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0B0F1A;
+  --surface: #121826;
+  --surface-warm: #0F172A;
+  --fg: #F1F5F9;
+  --fg-2: rgba(241,245,249,.78);
+  --muted: #94A3B8;
+  --meta: rgba(241,245,249,.42);
+  --border: #1E293B;
+  --border-hover: #334155;
+  --accent: #818CF8; /* indigo-400 for dark contrast */
+  --accent-hover: #6366F1;
+  --accent-active: #4F46E5;
+  --accent-soft: rgba(129,140,248,.14);
+  --elev-raised: 0 8px 24px rgba(0,0,0,.35);
+}
+
+/* View transition wrapper — fluido */
+.view-transition { animation: viewIn var(--dur-base) var(--ease-out); }
+@keyframes viewIn { from { opacity:0; transform: translateY(4px) } to { opacity:1; transform:none } }
+
+/* Nav item refinado — sem 'all', sem border-left colorida */
+#sideNav .ni, .nav-item { transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.nav-item.active, #sideNav .ni.act {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-left: none;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Metric strip — substitui stats-grid cards */
+.metric-strip {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.metric-strip > div { padding: 16px 20px; border-right: 1px solid var(--border); }
+.metric-strip > div:last-child { border-right: none; }
+.metric-strip .label { font-size: var(--text-xs); font-weight:500; letter-spacing:.06em; text-transform:uppercase; color: var(--muted); }
+.metric-strip .value { font-size: 22px; font-weight:700; letter-spacing:-.01em; color: var(--fg); }
+
+/* prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after { animation-duration:.01ms !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }
+}

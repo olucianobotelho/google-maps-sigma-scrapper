@@ -12,6 +12,7 @@ async function extractBusinessData(page) {
       priceRange: null,
       plusCode: null,
       description: '',
+      openingHours: '',
       photos: { main: '', thumbnail: '', all: [], count: 0 },
       latitude: '',
       longitude: '',
@@ -20,8 +21,16 @@ async function extractBusinessData(page) {
     };
 
     // --- ADDRESS ---
-    const addrEl = document.querySelector('button[data-item-id*="address"] div.fontBodyMedium') ||
-                   document.querySelector('span[jsinstance]') || null;
+    const addrCandidates = [
+      document.querySelector('button[data-item-id*="address"] div.fontBodyMedium'),
+      document.querySelector('div[data-item-id*="address"] div.fontBodyMedium'),
+      document.querySelector('a[data-item-id*="address"] div.fontBodyMedium'),
+      document.querySelector('button[data-item-id*="address"]'),
+      document.querySelector('div[data-item-id*="address"]'),
+      document.querySelector('[data-item-id*="address"]'),
+      document.querySelector('span[jsinstance]'),
+    ].filter(Boolean);
+    const addrEl = addrCandidates.find((el) => el && el.textContent && el.textContent.trim().length > 3) || null;
     if (addrEl) data.address = addrEl.textContent.trim();
 
     // --- PHONE ---
@@ -38,6 +47,17 @@ async function extractBusinessData(page) {
     // --- PLUS CODE ---
     const plusEl = document.querySelector('button[data-item-id*="oloc"] div.fontBodyMedium');
     if (plusEl) data.plusCode = plusEl.textContent.trim();
+
+    const hoursCandidates = [
+      document.querySelector('[aria-label*="Hours"]'),
+      document.querySelector('[aria-label*="horário"]'),
+      document.querySelector('[aria-label*="Horario"]'),
+      document.querySelector('button[data-item-id*="oh"]'),
+    ].filter(Boolean);
+    const hoursText = hoursCandidates
+      .map(el => el.getAttribute('aria-label') || el.textContent || '')
+      .find(text => text && text.trim().length > 5);
+    if (hoursText) data.openingHours = hoursText.replace(/\s+/g, ' ').trim();
 
     // --- RATING & REVIEWS ---
     const ratingEl = document.querySelector('div.F7nice span[aria-hidden="true"]');
@@ -98,14 +118,54 @@ for (const sel of descSelectors) {
     data.reviews = data.reviewCount;
 
     // --- COORDINATES & PLACE ID ---
-    const url = window.location.href;
-    const coord = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if (coord) {
-      data.latitude = parseFloat(coord[1]);
-      data.longitude = parseFloat(coord[2]);
+    // Prioridade: 1) link canônico do lugar (tem coords exatas), 2) coords do pin no mapa, 3) centro da viewport
+    let foundLat = '';
+    let foundLng = '';
+    let coordSource = '';
+
+    // 1) Botão de compartilhar / link canônico contém !3dLAT!4dLNG exato do POI
+    const shareLink = document.querySelector('a[href*="/maps/place/"]')?.href || document.querySelector('[data-item-id*="share"]')?.href || '';
+    const allLinks = [shareLink, window.location.href].join(' ');
+    const poiCoord = allLinks.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+    if (poiCoord) {
+      foundLat = poiCoord[1];
+      foundLng = poiCoord[2];
+      coordSource = 'poi';
+    }
+
+    // 2) Meta de lugar com coords do marcador
+    if (!foundLat) {
+      const metaCoords = document.documentElement.innerHTML.match(/"lat":\s*(-?\d+\.\d+)\s*,\s*"lng":\s*(-?\d+\.\d+)/)
+        || document.documentElement.innerHTML.match(/APP_INITIALIZATION_STATE[^;]*?\[\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*\]/);
+      if (metaCoords) {
+        // Sanity: deve estar no Brasil (-35 a 5 lat, -74 a -34 lng) pra evitar pegar outra coisa
+        const ml = parseFloat(metaCoords[1]);
+        const mn = parseFloat(metaCoords[2]);
+        if (ml >= -35 && ml <= 5 && mn >= -74 && mn <= -34) {
+          foundLat = String(ml);
+          foundLng = String(mn);
+          coordSource = 'meta';
+        }
+      }
+    }
+
+    // 3) Fallback: centro da viewport @lat,lng (pode estar deslocado)
+    if (!foundLat) {
+      const viewportCoord = window.location.href.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+      if (viewportCoord) {
+        foundLat = viewportCoord[1];
+        foundLng = viewportCoord[2];
+        coordSource = 'viewport';
+      }
+    }
+
+    if (foundLat) {
+      data.latitude = parseFloat(foundLat);
+      data.longitude = parseFloat(foundLng);
+      data.coordSource = coordSource;
     }
     // PlaceId fallback
-    const plusMatch = plusEl?.textContent.match(/0x[a-f0-9]+/) || url.match(/!1s(0x[a-f0-9:]+)/);
+    const plusMatch = plusEl?.textContent.match(/0x[a-f0-9]+/) || allLinks.match(/!1s(0x[a-f0-9:]+)/);
     if (plusMatch) data.placeId = plusMatch[0];
 
     return data;

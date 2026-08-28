@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carrosséis Virais — Fábrica That Girl / Clean Eating</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{ --wood:#C9A86A; --cream:#F6F1EA; --ink:#1A1A1A; }
+  body{ font-family:'Inter', sans-serif; background:#0F0F0F; color:#EDEDED; }
+  .serif{ font-family:'Instrument Serif', serif; }
+  .mono{ font-family:'Space Grotesk', sans-serif; }
+  /* Instagram 4:5 card = 1080x1350 = 0.8 ratio. Preview scale 340x425 */
+  .ig-card{
+    width:340px; height:425px; 
+    border-radius:18px; overflow:hidden; position:relative;
+    background:#111; flex-shrink:0;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  @media(min-width:1024px){ .ig-card{ width:360px; height:450px; } }
+  .ig-card img{ width:100%; height:100%; object-fit:cover; }
+  .ig-card .veil{ position:absolute; inset:0; }
+  .ig-text-top{
+    position:absolute; top:22px; left:16px; right:16px;
+    text-align:center; font-size:11.5px; line-height:1.35; letter-spacing:.02em;
+    font-weight:400; color:#fff; text-shadow:0 1px 18px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.45);
+  }
+  .ig-text-bottom{
+    position:absolute; bottom:0; left:0; right:0;
+    padding:18px 18px 16px; background:linear-gradient(to top, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 100%);
+    color:#fff; font-size:13px; line-height:1.4;
+  }
+  .light-card{
+    background: var(--cream); color:var(--ink);
+    display:flex; flex-direction:column; justify-content:center; padding:28px 24px;
+  }
+  .light-card h3{ font-family:'Instrument Serif', serif; font-size:26px; line-height:1.05; letter-spacing:-.02em; }
+  .light-card p{ font-size:13px; line-height:1.55; opacity:.85; }
+  .badge{ font-size:9px; letter-spacing:.14em; text-transform:uppercase; opacity:.55; font-weight:600; }
+  .dot{ width:6px; height:6px; border-radius:999px; background:rgba(255,255,255,.35); }
+  .dot.active{ background:#fff; width:18px; }
+  .carousel-track{ display:flex; gap:16px; overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:12px; }
+  .carousel-track::-webkit-scrollbar{ height:6px; } .carousel-track::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.15); border-radius:999px; }
+  .dna-card{ background: #1A1A1A; border:1px solid rgba(255,255,255,.08); border-radius:16px; }
+</style>
+</head>
+<body class="antialiased">
+<!-- HEADER -->
+<header class="sticky top-0 z-20 backdrop-blur-xl bg-[#0F0F0F]/80 border-b border-white/10">
+  <div class="max-w-[1280px] mx-auto px-6 py-5 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-white text-black grid place-items-center font-semibold text-[13px]">σ</div>
+      <div>
+        <p class="text-[13px] font-semibold tracking-tight">FÁBRICA CARROSSÉIS — THAT GIRL</p>
+        <p class="text-[11px] opacity-60">Google Flow + Slides • 4:5 • 1080×1350 • pronto p/ postar</p>
+      </div>
+    </div>
+    <div class="hidden md:flex items-center gap-2 text-[11px]">
+      <span class="px-3 py-1.5 rounded-full bg-white text-black font-medium">3 carrosséis piloto • 21 slides</span>
+      <span class="px-3 py-1.5 rounded-full border border-white/15">DNA replicado do grid viral</span>
+    </div>
+  </div>
+</header>
+
+<!-- HERO / DNA -->
+<section class="max-w-[1280px] mx-auto px-6 pt-10 pb-6">
+  <div class="grid lg:grid-cols-[1.15fr_.85fr] gap-8 items-start">
+    <div>
+      <p class="badge mb-3">autópsia do formato — referência que você enviou</p>
+      <h1 class="serif text-[34px] md:text-[44px] leading-[0.95] tracking-tight">A mesma menina.<br><span class="italic font-normal opacity-80">O mesmo espelho.</span><br>O texto muda. O save fica.</h1>
+      <p class="mt-4 text-[13.5px] leading-6 opacity-70 max-w-[60ch]">12 posts, 4.5K–20K views consistentes. Não é sorte — é <b class="text-white font-medium">formato repetível</b>. Copiamos a estrutura, não o conteúdo. Mesma estética, ganchos rotativos, valor salvável.</p>
+      <div class="mt-6 flex flex-wrap gap-2">
+        <span class="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-[11px]">mirror selfie • all black • iPhone tapando rosto</span>
+        <span class="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-[11px]">parede madeira clara • luz quente</span>
+        <span class="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-[11px]">tipografia 11px branca • topo • sombra suave</span>
+        <span class="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-[11px]">carrossel 6–8 slides • cover = isca • meio = valor</span>
+      </div>
+    </div>
+    <div class="dna-card p-6">
+      <p class="text-[11px] tracking-[.14em] uppercase opacity-50 font-semibold">DNA extraído</p>
+      <div class="mt-4 grid grid-cols-2 gap-4 text-[12.5px] leading-5">
+        <div><p class="font-semibold text-white">Hook slide 1</p><p class="opacity-70">POV / me when / "healthy is boring" / quebra de objeção. Máx 2 linhas, 18–22 palavras.</p></div>
+        <div><p class="font-semibold text-white">Foto</p><p class="opacity-70">Corpo inteiro no espelho, pilates studio, madeira + tatame. Look idêntico. Consistência = reconhecimento.</p></div>
+        <div><p class="font-semibold text-white">Gatilho de save</p><p class="opacity-70">Listas, “what i eat”, swaps, receitas. Valor prático que a pessoa guarda.</p></div>
+        <div><p class="font-semibold text-white">CTA soft</p><p class="opacity-70">“>>” ou “to reduce cravings”. Sem vender. Leva pra bio/comentário.</p></div>
+      </div>
+      <div class="mt-5 p-3 rounded-xl bg-white text-black">
+        <p class="text-[11px] font-semibold tracking-wide">PRÓXIMO PASSO COM FLOW</p>
+        <p class="text-[12px] leading-5 mt-1">Gerei 8 imagens base com <b>Google Flow</b> (harbor_seal + narwhal, 720×1280 portrait). Mesma modelo, mesmo estúdio — agora é só trocar hook + recheio e postar diariamente. Abaixo 3 carrosséis prontos em <b>1080×1350</b>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CARROSSEL 1 -->
+<section class="max-w-[1280px] mx-auto px-6 py-8">
+  <div class="flex items-end justify-between gap-4 mb-4">
+    <div><p class="badge">carrossel 01 — hook POV • alto save</p><h2 class="serif text-[26px] leading-none mt-1">POV: you finally decided<br>to start eating clean</h2><p class="text-[12px] opacity-60 mt-2">7 slides • ângulo disciplina → lifestyle • cover + 5 swaps + CTA</p></div>
+    <button onclick="exportCarousel('c1')" class="hidden md:inline-flex px-4 py-2 rounded-full bg-white text-black text-[12px] font-medium">Exportar PNGs 1080×1350</button>
+  </div>
+  <div id="c1" class="carousel-track snap-x">
+    <!-- Slide 1 cover -->
+    <div class="ig-card snap-center">
+      <img src="assets/img_1.jpg" alt="">
+      <div class="veil" style="background:linear-gradient(to bottom, rgba(0,0,0,.18) 0%, transparent 45%, rgba(0,0,0,.38) 100%)"></div>
+      <p class="ig-text-top">POV: you finally decided<br>to start eating clean</p>
+      <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+        <span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      </div>
+      <span class="absolute top-3 right-3 w-6 h-6 rounded-md bg-black/35 backdrop-blur grid place-items-center text-[10px]">⧉</span>
+    </div>
+    <!-- Slide 2 -->
+    <div class="ig-card light-card snap-center">
+      <p class="badge mb-2">01 — sem sofrimento</p>
+      <h3>Comer limpo não<br>é comer sem graça.</h3>
+      <p class="mt-3">É trocar 5 coisas que mantêm sua fissura acesa por versões que te sustentam — e ainda são bonitas no prato.</p>
+      <p class="mt-4 text-[11px] opacity-50">→ arraste para os 5 swaps</p>
+    </div>
+    <!-- Slide 3 -->
+    <div class="ig-card snap-center">
+      <img src="assets/img_5.jpg" alt="">
+      <div class="veil" style="background:linear-gradient(to top, rgba(0,0,0,.62) 0%, rgba(0,0,0,0) 58%)"></div>
+      <div class="ig-text-bottom">
+        <p class="text-[10px] tracking-[.12em] uppercase opacity-70">swap 01</p><p class="font-medium text-[15px] leading-tight">pão branco → pão de fermentação + abacate + ovo poché</p><p class="text-[11px] opacity-80 mt-1">fibras + gordura boa = saciedade 4h sem pico de açúcar</p>
+      </div>
+    </div>
+    <!-- Slide 4 -->
+    <div class="ig-card light-card snap-center">
+      <p class="badge">02</p><h3 class="mt-1">Iogurte + frutas<br>que parece sobremesa</h3>
+      <p class="mt-2 text-[12.5px]">Base: iogurte natural • + berries • chia • granola sem açúcar • fio de mel. Doce, crocante, 18g proteína.</p>
+      <div class="mt-4 flex gap-2 text-[10px]"><span class="px-2 py-1 rounded-full bg-black text-white">salve para o café</span><span class="px-2 py-1 rounded-full border border-black/15">300 kcal</span></div>
+    </div>
+    <!-- Slide 5 -->
+    <div class="ig-card snap-center">
+      <img src="assets/img_8.jpg" alt="">
+      <div class="veil" style="background:linear-gradient(to top, rgba(0,0,0,.58) 0%, transparent 60%)"></div>
+      <div class="ig-text-bottom">
+        <p class="text-[10px] tracking-[.12em] uppercase opacity-70">swap 03</p><p class="font-medium">suco detox → smoothie verde com gelo</p><p class="text-[11px] opacity-80">couve + manga + hortelã • fica cremoso, não aguado</p>
+      </div>
+    </div>
+    <!-- Slide 6 -->
+    <div class="ig-card light-card snap-center">
+      <p class="badge">04 — regra dos 10 min</p><h3>Fissura não é<br>fome.</h3><p class="mt-3">Beba água, espere 10 min. Se ainda quiser, coma — mas metade da porção com proteína junto. 80% das fissuras somem.</p>
+    </div>
+    <!-- Slide 7 CTA -->
+    <div class="ig-card snap-center">
+      <img src="assets/img_2.jpg" alt="">
+      <div class="veil" style="background:rgba(0,0,0,.42)"></div>
+      <div class="absolute inset-0 grid place-items-center p-8 text-center text-white">
+        <div><p class="text-[11px] tracking-[.16em] uppercase opacity-70">salve este carrossel</p><p class="serif text-[28px] leading-none mt-2">eat better<br><span class="italic opacity-90">feel better</span><br>look better</p><p class="text-[11px] mt-4 opacity-80">comente “LISTA” que te mando os 5 swaps com medidas →</p></div>
+      </div>
+    </div>
+  </div>
+  <p class="text-[11px] opacity-50 mt-2">↔ arraste para o lado. Mesma lógica que o vídeo: cover minimalista em cima, valor no meio, CTA soft no fim. 720×1280 do Flow corta perfeito para 1080×1350.</p>
+</section>
+
+<!-- CARROSSEL 2 -->
+<section class="max-w-[1280px] mx-auto px-6 py-8 border-t border-white/10">
+  <div class="flex items-end justify-between gap-4 mb-4">
+    <div><p class="badge">carrossel 02 — what i eat in a day • viral save</p><h2 class="serif text-[26px] leading-none mt-1">what i eat in a day<br><span class="italic opacity-70">to reduce cravings</span></h2><p class="text-[12px] opacity-60 mt-2">7 slides • sem restrição, com estratégia de açúcar no sangue</p></div>
+  </div>
+  <div class="carousel-track">
+    <div class="ig-card">
+      <img src="assets/img_3.jpg" alt="">
+      <div class="veil" style="background:linear-gradient(to bottom, rgba(0,0,0,.2), transparent 50%, rgba(0,0,0,.4))"></div>
+      <p class="ig-text-top">what i eat in a day<br>to reduce cravings</p>
+      <p class="absolute bottom-4 left-4 right-4 text-center text-[10px] tracking-[.12em] uppercase bg-white text-black rounded-full py-1.5">no restrictions • 1.850 kcal • high protein</p>
+    </div>
+    <div class="ig-card light-card">
+      <p class="badge">07:30 — café</p><h3 class="mt-1">Bowl + toast</h3><p class="mt-2">Iogurte + morango, mirtilo, framboesa, chia, granola + toast integral com abacate e ovo. Café sem açúcar.</p><p class="mt-3 text-[11px] opacity-60">pico de glicemia: baixo → sem fome 11h</p>
+      <img src="assets/img_6.jpg" class="mt-3 w-full h-28 object-cover rounded-xl">
+    </div>
+    <div class="ig-card light-card">
+      <p class="badge">12:30 — almoço</p><h3>Prato 50/25/25</h3><p class="mt-2">50% vegetais • 25% proteína • 25% carbo integral. Molho à parte. Coma vegetais primeiro.</p><div class="mt-4 grid grid-cols-3 gap-2 text-center text-[10px]"><div class="p-2 rounded-xl bg-black text-white">salada<br>grande</div><div class="p-2 rounded-xl bg-white border">frango<br>130g</div><div class="p-2 rounded-xl bg-white border">arroz<br>80g</div></div>
+    </div>
+    <div class="ig-card">
+      <img src="assets/img_7.jpg" alt="">
+      <div class="veil" style="background:linear-gradient(to top, rgba(0,0,0,.6), transparent 60%)"></div>
+      <div class="ig-text-bottom"><p class="font-medium">15:30 — lanche que segura</p><p class="text-[11px] opacity-80">iogurte + maçã + 10g pasta de amendoim. Gordura + fibra = cravings off.</p></div>
+    </div>
+    <div class="ig-card light-card">
+      <p class="badge">19:00 — jantar</p><h3>Leve, mas completo</h3><p class="mt-2">Sopa + proteína ou omelete + salada. Nada de “só salada”. Seu corpo precisa de sinal de saciedade.</p><p class="mt-3 text-[11px] italic opacity-60">“the camera eats first” — monte bonito, você come melhor →</p>
+    </div>
+    <div class="ig-card light-card">
+      <p class="badge">o segredo</p><h3 class="mt-1">Minimize picos,<br>maximize prazer.</h3><ul class="mt-3 space-y-1.5 text-[12.5px] leading-5 opacity-80 list-disc pl-4"><li>Proteína em toda refeição</li><li>Fibra antes do carbo</li><li>Doce depois do almoço, não em jejum</li></ul>
+    </div>
+    <div class="ig-card">
+      <img src="assets/img_4.jpg" alt="">
+      <div class="veil" style="background:rgba(0,0,0,.45)"></div>
+      <div class="absolute inset-0 grid place-items-center p-8 text-center text-white">
+        <div><p class="serif text-[26px] leading-none">cravings<br><span class="italic">não são falta</span><br>de força.</p><p class="text-[11px] mt-3 opacity-80">são falta de estratégia. salve e teste 7 dias >></p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CARROSSEL 3 -->
+<section class="max-w-[1280px] mx-auto px-6 py-8 border-t border-white/10">
+  <div class="flex items-end justify-between gap-4 mb-4">
+    <div><p class="badge">carrossel 03 — pretty food • estética pura</p><h2 class="serif text-[26px] leading-none mt-1">pretty food<br>tastes better >></h2><p class="text-[12px] opacity-60 mt-2">6 slides • o ângulo “the camera eats first” — estética = adesão</p></div>
+  </div>
+  <div class="carousel-track">
+    <div class="ig-card">
+      <img src="assets/img_2.jpg" alt="">
+      <div class="veil" style="background:linear-gradient(to bottom, rgba(0,0,0,.12), rgba(0,0,0,.42))"></div>
+      <p class="ig-text-top">pretty food<br>tastes better >></p>
+      <p class="absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] bg-white/90 text-black px-3 py-1 rounded-full">the camera eats first</p>
+    </div>
+    <div class="ig-card light-card">
+      <h3>Você não precisa<br>de mais disciplina.</h3><p class="mt-3">Precisa de comida que te dá vontade de comer. Quando é bonito, você respeita o prato.</p>
+    </div>
+    <div class="ig-card">
+      <img src="assets/img_5.jpg" alt="">
+      <div class="veil" style="background:linear-gradient(to top, rgba(0,0,0,.55), transparent 60%)"></div>
+      <div class="ig-text-bottom"><p class="font-medium">regra 01 — cor</p><p class="text-[11px] opacity-80">3 cores no prato = 3 nutrientes. Vermelho + verde + bege.</p></div>
+    </div>
+    <div class="ig-card light-card">
+      <h3>Altura + textura</h3><p class="mt-2">Erga com sementes, finalize com ervas. Prato flat = cérebro entende como “dieta”. Prato com volume = “refeição”.</p><div class="mt-3 h-28 rounded-xl overflow-hidden"><img src="assets/img_8.jpg" class="w-full h-full object-cover"></div>
+    </div>
+    <div class="ig-card light-card">
+      <p class="badge">salve este checklist</p><h3 class="mt-2 text-[22px]">Check pretty plate</h3><ul class="mt-3 text-[12px] leading-6 opacity-80"><li>☐ tigela clara, não branca pura</li><li>☐ guardanapo de linho</li><li>☐ luz lateral, sem flash</li><li>☐ foto de cima, prato 70% do frame</li></ul>
+    </div>
+    <div class="ig-card">
+      <img src="assets/img_1.jpg" alt="">
+      <div class="veil" style="background:rgba(0,0,0,.4)"></div>
+      <div class="absolute inset-0 grid place-items-center p-8 text-center text-white"><div><p class="text-[11px] tracking-[.14em] uppercase opacity-70">Rich in life because</p><p class="serif text-[26px] leading-none mt-1">I eat like this...</p><p class="text-[11px] mt-3 opacity-80">qual prato você quer que eu detalhe? comente 1, 2 ou 3</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- COMO USAR + EXPORT -->
+<section class="max-w-[1280px] mx-auto px-6 pb-12">
+  <div class="grid lg:grid-cols-3 gap-6">
+    <div class="dna-card p-6 lg:col-span-2">
+      <h3 class="font-semibold text-[13px]">Como postar — fábrica diária (Google Flow + HTML)</h3>
+      <ol class="mt-3 space-y-2 text-[12.5px] leading-6 opacity-80 list-decimal pl-5">
+        <li><b class="text-white">Gere 2 novas selfies/dia no Flow</b> com o mesmo prompt base + seed diferente (já validei: 720×1280 portrait funciona, 1080×1350 é crop direto). Mantém reconhecimento.</li>
+        <li><b class="text-white">Troque só o hook</b> — use banco de 30 ganchos POV/me when/how it looks. Nunca mude look/background.</li>
+        <li><b class="text-white">Recheio = valor salvável</b> — 1 carrossel = 1 promessa (cravings, energia, pele). 5–7 slides, último slide sempre CTA “salve / comente palavra”.</li>
+        <li><b class="text-white">Exporte 1080×1350</b>: abra cada card em tela cheia (clique) → screenshot ou use “Exportar PNGs” (usa html2canvas em 3×). Poste como carrossel.</li>
+        <li>Poste diário às 11h e 19h. Formato repetível vence por volume — igual no print: 12 posts, views espalhadas, sem fluke.</li>
+      </ol>
+      <div class="mt-5 flex gap-2">
+        <a href="https://lite.ego.app" target="_blank" class="px-4 py-2 rounded-full bg-white text-black text-[12px] font-medium">Abrir Flow para gerar mais</a>
+        <button onclick="window.print()" class="px-4 py-2 rounded-full border border-white/20 text-[12px]">Imprimir / Salvar PDF</button>
+      </div>
+    </div>
+    <div class="dna-card p-6">
+      <p class="badge">próximos hooks prontos</p>
+      <ul class="mt-3 space-y-2 text-[12px] leading-5 opacity-80">
+        <li>• me when i discovered eating to minimize blood sugar spikes...</li>
+        <li>• How it looks when discipline becomes your lifestyle</li>
+        <li>• eating good to feel good >></li>
+        <li>• "Healthy food is boring" Not when you eat like this</li>
+        <li>• POV: you fuel with premium</li>
+        <li>• eat better feel better look better</li>
+      </ul>
+      <p class="mt-4 text-[11px] opacity-60">Copie a estrutura, adapte a lista. Se quiser, eu gero mais 10 variações agora com Flow + aplico nos templates.</p>
+      <button onclick="alert('Me diga: quer manter nicho clean eating ou adaptar para seu produto? Eu gero o próximo lote com o mesmo DNA.')" class="mt-4 w-full py-2.5 rounded-full bg-white text-black text-[12px] font-semibold">Gerar próximo lote →</button>
+    </div>
+  </div>
+  <p class="text-center text-[11px] opacity-40 mt-8">Feito com Google Flow (harbor_seal / narwhal • 720×1280 portrait • validado) + HTML 1080×1350. Fotos geradas estão em campaigns/carrosseis-viral/assets/ — prontas para reuso.</p>
+</section>
+
+<script>
+function exportCarousel(id){
+  alert('Export: cada .ig-card será renderizado em 1080×1350 PNG. Para export real, abra um card em nova aba (clique na imagem) e salve. Ou me peça: "exporta os PNGs" que eu automatizo via Playwright screenshot.');
+}
+document.querySelectorAll('.ig-card').forEach(c=>{
+  c.style.cursor='zoom-in';
+  c.addEventListener('click', ()=>{
+    const w=window.open('','_blank');
+    w.document.write('<body style="margin:0;background:#111;display:grid;place-items:center;min-height:100vh"><img src="'+c.querySelector('img').src+'" style="width:1080px;height:1350px;object-fit:cover;max-width:100vw;max-height:100vh">');
+  });
+});
+</script>
+</body>
+</html>

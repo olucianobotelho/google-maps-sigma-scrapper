@@ -1,5 +1,10 @@
 const path = require('path');
 const fs = require('fs');
+const {
+  recomputeStats: computeAnalytics,
+  emptyStats,
+  defaultLeadTrackingFields,
+} = require('./campaign-analytics');
 
 class CampaignStore {
   constructor(userDataPath) {
@@ -56,52 +61,64 @@ class CampaignStore {
   create(data) {
     const id = data.id || `camp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const now = Date.now();
+    const connectionIds = Array.isArray(data.connectionIds)
+      ? [...new Set(data.connectionIds.filter(Boolean))]
+      : (data.connectionId ? [data.connectionId] : []);
+    const primaryConnectionId = data.connectionId || connectionIds[0] || null;
+
     this.campaigns[id] = {
       id,
       name: data.name,
       provider: data.provider,
-      connectionId: data.connectionId || null,
+      connectionId: primaryConnectionId,
+      connectionIds,
       template: data.template,
       media: (data.template && data.template.media) || null,
-      leads: (data.leadIds || []).map(lid => ({
-        leadId: lid.leadId || lid,
-        name: lid.name || '',
-        phone: lid.phone || '',
-        phoneRaw: lid.phoneRaw || lid.phone || '',
-        company: lid.company || '',
-        category: lid.category || '',
-        website: lid.website || '',
-        site: lid.website || lid.site || '',
-        instagram: lid.instagram || '',
-        email: lid.email || '',
-        address: lid.address || '',
-        rating: lid.rating || '',
-        totalReviews: lid.totalReviews || '',
-        status: 'pending',
-        errorMessage: null,
-        sentAt: null,
-        deliveredAt: null,
-        readAt: null,
-        repliedAt: null,
-        responseTimeMs: null,
-        messageId: null,
-      })),
+      leads: (data.leadIds || []).map((lid, idx) => {
+        const assigned =
+          lid.connectionId ||
+          (connectionIds.length
+            ? connectionIds[idx % connectionIds.length]
+            : primaryConnectionId);
+        return {
+          leadId: lid.leadId || lid.id || lid.phone || lid.jid || String(lid),
+          name: lid.name || '',
+          phone: lid.phone || '',
+          phoneRaw: lid.phoneRaw || lid.phone || '',
+          jid: lid.jid || '',
+          isGroup: !!lid.isGroup,
+          source: lid.source || 'manual',
+          connectionId: assigned || null,
+          company: lid.company || '',
+          category: lid.category || '',
+          website: lid.website || '',
+          site: lid.website || lid.site || '',
+          instagram: lid.instagram || '',
+          email: lid.email || '',
+          address: lid.address || '',
+          rating: lid.rating || '',
+          totalReviews: lid.totalReviews || '',
+          score: lid.score || '',
+          prioridade: lid.prioridade || '',
+          dor_principal: lid.dor_principal || '',
+          oportunidade_principal: lid.oportunidade_principal || '',
+          argumento_principal: lid.argumento_principal || '',
+          mensagem_whatsapp_ia: lid.mensagem_whatsapp_ia || '',
+          ticket_estimado: lid.ticket_estimado || '',
+          chance_resposta: lid.chance_resposta || '',
+          ...defaultLeadTrackingFields(),
+        };
+      }),
       schedule: {
         mode: data.schedule?.mode || 'immediate',
         intervalMs: Math.max(data.schedule?.intervalMs || 5000, 5000),
         startAt: data.schedule?.startAt || null,
+        workingHours: data.schedule?.workingHours || null,
       },
       status: 'ready',
-      stats: {
-        total: (data.leadIds || []).length,
-        pending: (data.leadIds || []).length,
-        sent: 0,
-        delivered: 0,
-        read: 0,
-        replied: 0,
-        failed: 0,
-        avgResponseTimeMs: 0,
-      },
+      pauseReason: null,
+      stats: emptyStats((data.leadIds || []).length),
+      eventLog: [],
       createdAt: now,
       updatedAt: now,
     };
@@ -111,13 +128,31 @@ class CampaignStore {
 
   update(id, partial, debounced = false) {
     if (!this.campaigns[id]) throw new Error(`Campaign ${id} not found`);
-    Object.assign(this.campaigns[id], partial, { updatedAt: Date.now() });
+    const campaign = this.campaigns[id];
+    const next = { ...partial };
+    if (Array.isArray(next.leads)) {
+      const previous = new Map((campaign.leads || []).map((lead) => [String(lead.leadId || lead.phone || lead.jid), lead]));
+      next.leads = next.leads.map((lead) => ({ ...(previous.get(String(lead.leadId || lead.phone || lead.jid)) || {}), ...lead }));
+    }
+    Object.assign(campaign, next, { updatedAt: Date.now() });
     if (debounced) {
       this._saveDebounced();
     } else {
       this._save();
     }
     return this.campaigns[id];
+  }
+
+  patchRecipient(id, leadId, patch, debounced = false) {
+    const campaign = this.campaigns[id];
+    if (!campaign) throw new Error(`Campaign ${id} not found`);
+    const key = String(leadId || '');
+    const index = (campaign.leads || []).findIndex((lead) => String(lead.leadId || lead.phone || lead.jid) === key);
+    if (index < 0) throw new Error(`Recipient ${leadId} not found`);
+    campaign.leads[index] = { ...campaign.leads[index], ...patch };
+    campaign.updatedAt = Date.now();
+    debounced ? this._saveDebounced() : this._save();
+    return campaign;
   }
 
   delete(id) {
@@ -134,22 +169,20 @@ class CampaignStore {
   }
 
   recomputeStats(campaign) {
-    const leads = campaign.leads || [];
-    const responseTimes = leads
-      .map(l => l.responseTimeMs)
-      .filter(v => Number.isFinite(v) && v >= 0);
-    return {
-      total: leads.length,
-      pending: leads.filter(l => l.status === 'pending').length,
-      sent: leads.filter(l => ['sent', 'delivered', 'read', 'replied'].includes(l.status)).length,
-      delivered: leads.filter(l => ['delivered', 'read', 'replied'].includes(l.status)).length,
-      read: leads.filter(l => ['read', 'replied'].includes(l.status)).length,
-      replied: leads.filter(l => l.repliedAt).length,
-      failed: leads.filter(l => l.status === 'failed').length,
-      avgResponseTimeMs: responseTimes.length
-        ? Math.round(responseTimes.reduce((sum, v) => sum + v, 0) / responseTimes.length)
-        : 0,
-    };
+    return computeAnalytics(campaign);
+  }
+
+  /** Append a short event to the campaign log (kept last 200 entries). */
+  pushEvent(campaign, entry) {
+    if (!campaign) return;
+    if (!Array.isArray(campaign.eventLog)) campaign.eventLog = [];
+    campaign.eventLog.push({
+      at: Date.now(),
+      ...entry,
+    });
+    if (campaign.eventLog.length > 200) {
+      campaign.eventLog = campaign.eventLog.slice(-200);
+    }
   }
 
   flush() {

@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const CONFIG = require('./config');
 const { extractBusinessData } = require('./utils/businessData');
+const { geocodeAddress, isValidCoord } = require('./utils/geocode');
 
 function checkCancelled(cancelToken) {
   if (cancelToken?.cancelled) {
@@ -95,6 +96,28 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
         const place = await extractBusinessData(page);
 
         if (place.name) {
+          const lat = parseFloat(place.latitude);
+          const lng = parseFloat(place.longitude);
+          const hasPreciseCoord = isValidCoord(lat, lng) && place.coordSource !== 'viewport';
+          const needsGeocode = !hasPreciseCoord && place.address && place.address.length > 5;
+          if (needsGeocode) {
+            try {
+              checkCancelled(cancelToken);
+              const geo = await geocodeAddress(place.address, searchQuery);
+              if (geo && isValidCoord(geo.lat, geo.lng)) {
+                // Só sobrescreve se não tinha coord ou se era viewport (imprecisa)
+                const shouldOverwrite = !isValidCoord(lat, lng) || place.coordSource === 'viewport';
+                if (shouldOverwrite) {
+                  place.latitude = geo.lat;
+                  place.longitude = geo.lng;
+                  place.geocodeConfidence = geo.confidence;
+                  place.geocodeSource = geo.source;
+                  place.geocodeDisplayName = geo.displayName;
+                  place.coordSource = 'nominatim';
+                }
+              }
+            } catch {}
+          }
           place.instagram = '';
           if (place.website && place.website.includes('instagram.com')) {
             place.instagram = place.website;

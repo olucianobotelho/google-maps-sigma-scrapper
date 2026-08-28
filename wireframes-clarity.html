@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Sigma GMaps — Sigma Clarity · Wireframes</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root{
+    --indigo-600:#4F46E5; --indigo-500:#6366F1; --indigo-400:#818CF8; --indigo-100:#E0E7FF; --indigo-soft:rgba(99,102,241,.08);
+    --slate-900:#0F172A; --slate-700:#334155; --slate-500:#64748B; --slate-400:#94A3B8; --slate-300:#CBD5E1; --slate-200:#E2E8F0; --slate-100:#F1F5F9; --slate-50:#F8FAFC;
+    --emerald-600:#059669; --amber-600:#D97706; --red-600:#DC2626;
+    --bg: var(--slate-50); --surface:#fff; --fg:var(--slate-900); --fg-2:var(--slate-700); --muted:var(--slate-500); --border:var(--slate-200); --border2:var(--slate-100);
+    --accent:var(--indigo-500); --accent-hover:var(--indigo-600); --accent-soft:var(--indigo-soft);
+    --radius-sm:6px; --radius-md:8px; --radius-lg:12px; --radius-pill:999px;
+    --dur-fast:120ms; --dur-base:180ms; --ease-out:cubic-bezier(.16,1,.3,1);
+    --shadow:0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.05);
+    --shadow-lg:0 8px 24px rgba(15,23,42,.08), 0 4px 8px rgba(15,23,42,.04);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:"Inter",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  /* Top bar */
+  .topbar{position:fixed;top:0;left:0;right:0;height:48px;background:rgba(255,255,255,.92);backdrop-filter:saturate(1.2) blur(8px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 18px;z-index:50}
+  .topbar .brand{display:flex;align-items:center;gap:10px}
+  .logo{width:28px;height:28px;border-radius:7px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-size:13px;letter-spacing:-.02em}
+  .brand b{font-size:13.5px;letter-spacing:-.015em}
+  .brand span{font-size:11px;color:var(--muted);font-weight:500}
+  .topbar .nav-mini{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .pill{font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--muted)}
+  .pill.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .progress{position:fixed;top:48px;left:0;height:2px;background:var(--accent);width:0;z-index:51;transition:width var(--dur-base) var(--ease-out)}
+  /* Layout */
+  .layout{display:flex;max-width:1440px;margin:0 auto;padding-top:50px;min-height:100vh}
+  .side{position:sticky;top:50px;align-self:flex-start;width:220px;flex-shrink:0;padding:18px 14px 24px;border-right:1px solid var(--border);background:var(--surface);height:calc(100vh - 50px);overflow:auto}
+  .side small{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--slate-400);display:block;margin:14px 0 8px}
+  .side small:first-child{margin-top:0}
+  .side a{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;font-size:13px;font-weight:500;color:var(--fg-2);border:1px solid transparent}
+  .side a:hover{background:var(--slate-100);color:var(--fg)}
+  .side a.active{background:var(--accent-soft);color:var(--accent);border-color:rgba(99,102,241,.18);box-shadow:inset 2px 0 0 var(--accent)}
+  .side a .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.0}
+  .side a.active .dot{opacity:1}
+  .content{flex:1;min-width:0;padding:28px 28px 80px}
+  /* Slides */
+  .slide{margin:0 0 36px;scroll-margin-top:68px}
+  .slide-header{margin-bottom:16px}
+  .kicker{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:8px}
+  .kicker::before{content:"";width:18px;height:2px;background:var(--accent);border-radius:999px}
+  .slide-header h2{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-top:6px}
+  .slide-header p{font-size:14px;color:var(--muted);margin-top:6px;max-width:68ch;line-height:1.6}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+  .card-pad{padding:18px 20px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;background:var(--slate-100);color:var(--slate-700);border:1px solid var(--border)}
+  .badge.accent{background:var(--accent-soft);color:var(--accent);border-color:rgba(99,102,241,.18)}
+  .badge.green{background:rgba(5,150,105,.08);color:var(--emerald-600);border-color:rgba(5,150,105,.18)}
+  .badge.amber{background:rgba(217,119,6,.08);color:var(--amber-600)}
+  /* Window mock */
+  .window{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow-lg)}
+  .win-bar{height:28px;background:var(--slate-100);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 10px}
+  .win-dot{width:10px;height:10px;border-radius:50%;background:#fff;border:1px solid var(--slate-200)}
+  .win-dot.r{background:#FF5F57;border-color:#E0443E}.win-dot.y{background:#FFBD2E;border-color:#D9A400}.win-dot.g{background:#28C840;border-color:#1AAB29}
+  .win-title{font-size:11px;font-weight:600;color:var(--slate-500);margin-left:8px}
+  .win-body{display:flex;min-height:320px}
+  .win-sidebar{width:168px;background:var(--surface);border-right:1px solid var(--border);padding:10px 8px;display:flex;flex-direction:column;gap:6px}
+  .win-sb-brand{display:flex;align-items:center;gap:8px;padding:6px 6px 10px;border-bottom:1px solid var(--border)}
+  .win-sb-brand i{width:22px;height:22px;border-radius:6px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:800}
+  .win-sb-brand b{font-size:11px} .win-sb-brand span{font-size:10px;color:var(--muted)}
+  .win-nav-item{font-size:11.5px;font-weight:500;padding:6px 8px;border-radius:6px;color:var(--fg-2);display:flex;align-items:center;gap:7px}
+  .win-nav-item.active{background:var(--accent-soft);color:var(--accent);box-shadow:inset 2px 0 0 var(--accent)}
+  .win-main{flex:1;background:var(--bg);padding:12px;display:flex;flex-direction:column;gap:10px}
+  .win-header{height:44px;background:rgba(255,255,255,.9);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:10px;padding:0 10px}
+  .search-pill{flex:1;max-width:320px;height:28px;background:var(--surface);border:1px solid var(--border);border-radius:999px;display:flex;align-items:center;gap:8px;padding:0 10px;font-size:11px;color:var(--muted)}
+  .btn{font-size:11px;font-weight:600;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--fg)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .metric-strip{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .metric-strip>div{padding:10px 12px;border-right:1px solid var(--border)}
+  .metric-strip>div:last-child{border-right:none}
+  .metric-strip .lb{font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  .metric-strip .vl{font-size:16px;font-weight:800;letter-spacing:-.01em;margin-top:2px}
+  .metric-strip .sb{font-size:10px;color:var(--muted)}
+  .wire-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .wire-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .wire-card h4{font-size:12px;font-weight:700}
+  .wire-card p{font-size:11px;color:var(--muted);line-height:1.5}
+  .wire-card .link{font-size:11px;font-weight:600;color:var(--accent)}
+  /* Map mock */
+  .map-layout{display:grid;grid-template-columns:1.62fr .9fr;gap:10px;min-height:300px}
+  .map-canvas{background:#E8F0FE;border:1px solid var(--border);border-radius:8px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .map-canvas::before{content:"";position:absolute;inset:0;background:
+    linear-gradient(var(--slate-200) 1px, transparent 1px) 0 0/24px 24px,
+    linear-gradient(90deg, var(--slate-200) 1px, transparent 1px) 0 0/24px 24px;opacity:.35}
+  .map-pin{position:absolute;width:18px;height:18px;border-radius:50%;background:#059669;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.2);display:grid;place-items:center;color:#fff;font-size:8px}
+  .map-bar{position:absolute;top:8px;left:8px;right:8px;display:flex;justify-content:space-between;gap:8px}
+  .map-chip{font-size:10px;font-weight:600;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,.96);border:1px solid var(--border);box-shadow:var(--shadow)}
+  .feed{border:1px solid var(--border);border-radius:8px;background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
+  .feed-head{padding:8px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .feed-head b{font-size:11px} .feed-list{flex:1;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:8px}
+  .feed-item{border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--surface)}
+  .feed-item.selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+  .feed-item .top{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px}
+  .feed-item .name{font-size:11px;font-weight:700} .feed-item .addr{font-size:10px;color:var(--muted);display:flex;gap:4px;align-items:center}
+  .pill-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .pill-sm{font-size:10px;padding:3px 7px;border-radius:999px;border:1px solid var(--border);background:var(--slate-50)}
+  /* Chat mock */
+  .chat-shell{border:1px solid var(--border);border-radius:8px;overflow:hidden;display:grid;grid-template-columns:220px 1fr;min-height:320px;background:var(--surface)}
+  .chat-list{border-right:1px solid var(--border);display:flex;flex-direction:column}
+  .chat-list-head{padding:8px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+  .chat-search{height:28px;border:1px solid var(--border);border-radius:999px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:11px;color:var(--muted)}
+  .chat-filters{display:flex;gap:6px;flex-wrap:wrap}
+  .chat-thread{padding:8px 10px;border-bottom:1px solid var(--border2);display:flex;gap:8px;align-items:center}
+  .chat-thread.active{background:var(--accent-soft)}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--indigo-100);color:var(--accent);display:grid;place-items:center;font-weight:700;font-size:11px;flex-shrink:0}
+  .chat-thread b{font-size:11px} .chat-thread p{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+  .chat-room{padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
+  .bubble{max-width:68%;padding:7px 9px;border-radius:10px;font-size:11px;line-height:1.45}
+  .bubble.in{background:#fff;border:1px solid var(--border);align-self:flex-start;border-bottom-left-radius:3px}
+  .bubble.out{background:#EEF2FF;border:1px solid var(--indigo-100);align-self:flex-end;border-bottom-right-radius:3px}
+  .composer{margin-top:auto;height:36px;border:1px solid var(--border);border-radius:999px;background:#fff;display:flex;align-items:center;gap:8px;padding:0 8px}
+  /* Table mock */
+  .table{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
+  .table-head{display:grid;grid-template-columns:28px 1fr 90px 90px 70px;gap:8px;padding:7px 10px;background:var(--slate-50);border-bottom:1px solid var(--border);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .table-row{display:grid;grid-template-columns:28px 1fr 90px 90px 70px;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border2);font-size:11px;align-items:center}
+  /* Modal */
+  .modal-demo{width:min(420px,92%);margin:0 auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-lg)}
+  .modal-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+  .modal-head b{font-size:13px} .modal-head p{font-size:11px;color:var(--muted)}
+  .modal-body{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:11px;font-weight:600} .field input, .field select{height:32px;border:1px solid var(--border);border-radius:6px;padding:0 10px;font-size:12px;background:var(--surface)}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  /* Legend */
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:8px}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block;vertical-align:-1px;margin-right:6px}
+  /* Utilities */
+  .muted{color:var(--muted)} .mono{font-family:"JetBrains Mono",monospace}
+  .note{font-size:12px;color:var(--muted);background:var(--slate-50);border:1px solid var(--border);border-radius:8px;padding:10px 12px;line-height:1.6}
+  .kpi{display:flex;gap:10px;margin-top:8px}
+  .kpi div{flex:1;background:var(--slate-50);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center}
+  .kpi b{font-size:18px;display:block} .kpi span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  .stepper{display:flex;gap:8px;margin:8px 0}
+  .step{flex:1;height:4px;border-radius:999px;background:var(--slate-200)}
+  .step.on{background:var(--accent)}
+  .annot{position:relative}
+  .annot::after{content:attr(data-n);position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center;box-shadow:0 2px 6px rgba(99,102,241,.4)}
+  .controls{position:fixed;right:18px;bottom:18px;display:flex;gap:8px;z-index:40}
+  .ctrl{width:36px;height:36px;border-radius:999px;background:var(--surface);border:1px solid var(--border);display:grid;place-items:center;cursor:pointer;box-shadow:var(--shadow)}
+  .ctrl:hover{background:var(--slate-50)}
+  .mobile-only{display:none}
+  @media (max-width:900px){
+    .side{display:none}
+    .content{padding:18px 16px 80px}
+    .grid2{grid-template-columns:1fr}
+    .grid3{grid-template-columns:1fr}
+    .map-layout{grid-template-columns:1fr}
+    .chat-shell{grid-template-columns:1fr}
+    .chat-list{display:none}
+    .metric-strip{grid-template-columns:1fr 1fr}
+    .mobile-only{display:block}
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><div class="logo">◈</div><div><b>Sigma GMaps</b> <span>Sigma Clarity — Wireframes</span></div></div>
+  <div class="nav-mini">
+    <span class="pill">Light-first · 1 indigo · Inter 14</span>
+    <a class="pill primary" href="./docs/preview-clarity-shell.html" target="_blank">Abrir preview shell →</a>
+  </div>
+</div>
+<div class="progress" id="progress"></div>
+
+<div class="layout">
+  <aside class="side" id="sideNav">
+    <small>Apresentação</small>
+    <a href="#cover" class="active"><span class="dot"></span> 00 Cover</a>
+    <a href="#principios"><span class="dot"></span> 01 Princípios</a>
+    <a href="#sitemap"><span class="dot"></span> 02 Sitemap & fluxos</a>
+    <small>Telas — wireframes</small>
+    <a href="#shell"><span class="dot"></span> 03 App shell + ⌘K</a>
+    <a href="#overview"><span class="dot"></span> 04 Visão geral</a>
+    <a href="#scraper"><span class="dot"></span> 05 Scraper Maps</a>
+    <a href="#scoring"><span class="dot"></span> 06 Lead Scoring</a>
+    <a href="#whatsapp"><span class="dot"></span> 07 WhatsApp Chat</a>
+    <a href="#campaigns"><span class="dot"></span> 08 Campanhas (wizard)</a>
+    <a href="#dashboard"><span class="dot"></span> 09 Dashboard</a>
+    <a href="#modal"><span class="dot"></span> 10 Nova extração</a>
+    <small>Sistema</small>
+    <a href="#states"><span class="dot"></span> 11 Estados & feedback</a>
+    <a href="#tokens"><span class="dot"></span> 12 Tokens & motion</a>
+    <a href="#roadmap"><span class="dot"></span> 13 Roadmap</a>
+    <div style="margin-top:16px" class="note">Use <span class="mono">↑ ↓</span> ou <span class="mono">j k</span> para navegar. <span class="mono">⌘K</span> abre spotlight.</div>
+  </aside>
+
+  <main class="content">
+
+    <!-- COVER -->
+    <section class="slide" id="cover">
+      <div class="card">
+        <div class="card-pad" style="padding:28px 24px">
+          <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;justify-content:space-between">
+            <div>
+              <div class="kicker">Sigma GMaps Scraper · Electron 39 + React 18</div>
+              <h1 style="font-size:28px;font-weight:800;letter-spacing:-.025em;margin-top:8px;line-height:1.1">Sigma Clarity<br/><span style="color:var(--accent);font-weight:800">Mais leve, claro por padrão,<br/>navegação que flui.</span></h1>
+              <p style="font-size:13px;color:var(--muted);margin-top:10px;max-width:56ch;line-height:1.6">Wireframes interativos do redesign. Menos densidade, 1 accent (indigo), tipografia Inter 14, motion 180ms. De 6986 linhas de CSS denso para um workspace técnico que respira.</p>
+              <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+                <span class="badge accent">Light-first · #F8FAFC</span><span class="badge">5 nav items (era 6)</span><span class="badge">1 primary CTA / tela</span><span class="badge green">AA contrast</span>
+              </div>
+            </div>
+            <div style="background:var(--slate-50);border:1px solid var(--border);border-radius:10px;padding:12px 14px;min-width:220px">
+              <div style="font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase">Antes → Depois</div>
+              <div class="kpi" style="margin-top:8px">
+                <div><b>240</b><span>sidebar px</span></div><div><b>220</b><span>novo</span></div>
+              </div>
+              <div class="kpi">
+                <div><b>86</b><span>chrome h</span></div><div><b>48</b><span>novo</span></div>
+              </div>
+              <div class="kpi">
+                <div><b>8</b><span>cards dobra</span></div><div><b>3</b><span>novo</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="height:6px;background:linear-gradient(90deg,var(--accent),#A78BFA)"></div>
+      </div>
+      <div class="grid2" style="margin-top:14px">
+        <div class="note"><b>O que muda visualmente?</b> Fundo #0a0a0a → #F8FAFC, cards com borda 1px sem sombra pesada, metric-strip sem cards coloridos, mapa sem floating cards. Mesmo poder, metade do ruído.</div>
+        <div class="note"><b>Como navegar aqui:</b> Clique no menu lateral ou use setas. Cada tela tem um window mock interativo + anotações numeradas. Abra o <a href="./docs/preview-clarity-shell.html" target="_blank" style="color:var(--accent);font-weight:600">preview shell real ↗</a>.</div>
+      </div>
+    </section>
+
+    <!-- PRINCIPIOS -->
+    <section class="slide" id="principios">
+      <div class="slide-header">
+        <div class="kicker">01 · Direção</div>
+        <h2>Princípios — anti-AI slop + intuitive UI</h2>
+        <p>Uma frase de direção: <em>Technical clarity workspace — Swiss grid + Stripe dashboard: claro, 1 indigo, dado manda, sem vidro nem gradiente.</em></p>
+      </div>
+      <div class="grid3">
+        <div class="card card-pad">
+          <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center">◐</div>
+          <h3 style="font-size:13px;margin-top:8px">Menos é navegação</h3>
+          <p style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6">1 primary CTA por tela (intuitive-product-ui #12). Sidebar 5 itens, header 1 busca. Campanhas vira sub-tab dentro de WhatsApp — não top-level duplicado.</p>
+        </div>
+        <div class="card card-pad">
+          <div style="width:28px;height:28px;border-radius:7px;background:var(--slate-100);display:grid;place-items:center">◈</div>
+          <h3 style="font-size:13px;margin-top:8px">Claro que respira</h3>
+          <p style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6">Light #F8FAFC default, superfície #FFF, borda #E2E8F0, raio 8. Whitespace 24-32 como material. Sem glassmorphism nem gradiente mesh (slop #1-2).</p>
+        </div>
+        <div class="card card-pad">
+          <div style="width:28px;height:28px;border-radius:7px;background:rgba(5,150,105,.08);color:var(--emerald-600);display:grid;place-items:center">↗</div>
+          <h3 style="font-size:13px;margin-top:8px">Motion com causalidade</h3>
+          <p style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6">Enter 180ms ease-out, exit 120ms, só transform/opacity. View transição translateY 4px. Respeita prefers-reduced-motion.</p>
+        </div>
+      </div>
+      <div class="legend"><span><i style="background:var(--accent)"></i> indigo = única cor de ação</span><span><i style="background:var(--emerald-600)"></i> emerald = sucesso</span><span><i style="background:var(--slate-200)"></i> slate = estrutura</span><span><i style="background:#fff;border:1px solid var(--border)"></i> branco = superfície</span></div>
+    </section>
+
+    <!-- SITEMAP -->
+    <section class="slide" id="sitemap">
+      <div class="slide-header">
+        <div class="kicker">02 · Arquitetura</div>
+        <h2>Sitemap novo vs antigo</h2>
+        <p>Antes: 6 itens flat na sidebar (Campanhas duplicava WhatsApp). Depois: 5 primários + tabs secundárias dentro da view.</p>
+      </div>
+      <div class="card card-pad">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Antes — flat & denso</div>
+            <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;font-size:12px">
+              <div style="padding:8px 10px;border:1px dashed var(--slate-300);border-radius:8px;color:var(--muted)">Sidebar 240px · 6 itens + footer 2</div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">▦ Visão Geral</div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">◎ Scraper Maps</div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">✦ Lead Scoring (8 filtros visíveis)</div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">◐ WhatsApp</div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#FEF2F2;border-color:#FECACA;color:var(--red-600)">meg Campanhas — duplicado (alias de WhatsApp)</div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">⚙ Configurações</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Header duplo: titlebar 38 + search 48 = 86px de chrome</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)">Depois — 3 níveis claros</div>
+            <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;font-size:12px">
+              <div style="padding:8px 10px;background:var(--accent-soft);border:1px solid rgba(99,102,241,.18);border-radius:8px;color:var(--accent)"><b>L1 Shell</b> — Sidebar 220 · 5 itens · Header 48 único · ⌘K</div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">▦ Visão Geral <span style="color:var(--muted)">⌘1</span></div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">◎ Scraper <span style="color:var(--muted)">⌘2 · badge 142</span></div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">✦ Lead Scoring <span style="color:var(--muted)">⌘3 · drawer de filtros</span></div>
+              <div style="padding:8px 10px;border:1px solid var(--accent);border-radius:8px">◐ WhatsApp <span style="color:var(--muted)">⌘4</span> → <span class="badge accent">tabs: Conexão · Chats · Campanhas · Config</span></div>
+              <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">▭ Dashboard <span style="color:var(--muted)">⌘5</span></div>
+              <div style="font-size:11px;color:var(--muted)">Breadcrumbs só quando profundidade &gt;2 · 1 primary CTA por view</div>
+            </div>
+          </div>
+        </div>
+        <div class="note" style="margin-top:12px">Referências: Linear 5 itens + cmd-K · Notion drawer colapsável · Stripe header 48 · anti-ai-slop #4 (sem card-grid repetido)</div>
+      </div>
+    </section>
+
+    <!-- SHELL -->
+    <section class="slide" id="shell">
+      <div class="slide-header">
+        <div class="kicker">03 · Window chrome</div>
+        <h2>App shell — frameless leve, ⌘K spotlight</h2>
+        <p>Titlebar nativa 32 + sidebar 220 (colapsa para 64) + header 48 único. Busca global vira spotlight real — filtra leads, campanhas, chats.</p>
+      </div>
+      <div class="window">
+        <div class="win-bar"><span class="win-dot r"></span><span class="win-dot y"></span><span class="win-dot g"></span><span class="win-title">Sigma GMaps — Sigma Clarity · Light · 1200×800</span><span style="margin-left:auto;font-size:10px;color:var(--muted)">— □ ✕</span></div>
+        <div class="win-body">
+          <div class="win-sidebar">
+            <div class="win-sb-brand"><i>◈</i><div><b>Sigma GMaps</b><div style="font-size:10px;color:var(--muted)">COMMUNITY ✓</div></div></div>
+            <div class="btn primary" style="justify-content:center">＋ Nova Extração</div>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <div class="win-nav-item active">▦ Visão Geral</div>
+            <div class="win-nav-item">◎ Scraper <span style="margin-left:auto" class="badge accent">142</span></div>
+            <div class="win-nav-item">✦ Scoring</div>
+            <div class="win-nav-item">◐ WhatsApp</div>
+            <div class="win-nav-item">▭ Dashboard</div>
+            <div class="win-nav-item">⚙ Config</div>
+            <div style="margin-top:auto;border-top:1px solid var(--border);padding-top:6px;display:flex;flex-direction:column;gap:4px">
+              <div class="win-nav-item">? Ajuda</div><div class="win-nav-item" style="color:var(--red-600)">↗ Sair</div>
+            </div>
+          </div>
+          <div class="win-main">
+            <div class="win-header">
+              <div class="search-pill">⌘K Buscar leads, campanhas, chats… <span style="margin-left:auto;font-size:10px;background:var(--slate-100);padding:2px 6px;border-radius:4px;border:1px solid var(--border)">⌘K</span></div>
+              <span class="badge">GitHub</span><span class="badge">🔔</span><span style="width:22px;height:22px;border-radius:50%;background:var(--slate-200);display:grid;place-items:center;font-size:10px">L</span>
+            </div>
+            <div style="flex:1;border:1px dashed var(--slate-300);border-radius:8px;background:var(--surface);display:grid;place-items:center;color:var(--muted);font-size:11px">Main view entra aqui · view-transition 180ms · max-width 1280 centered · padding 24</div>
+            <div style="font-size:10px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap"><span><b>220</b> sidebar</span><span><b>48</b> header</span><span><b>24</b> page padding</span><span><b>8</b> radius</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:10px">
+        <div class="card card-pad annot" data-n="1"><b style="font-size:12px">1 · Spotlight ⌘K</b><p style="font-size:11px;color:var(--muted);margin-top:4px">Lista filtrável: “Go Scraper”, “Nova extração”, “Exportar CSV”, “Alternar tema”. Substitui search dummy de <span class="mono">App.jsx:276</span>.</p></div>
+        <div class="card card-pad annot" data-n="2"><b style="font-size:12px">2 · Sidebar respirável</b><p style="font-size:11px;color:var(--muted);margin-top:4px">5 itens, active com inset 2px indigo + bg soft. Colapsa para 64px com ícone só — memorizado em localStorage.</p></div>
+      </div>
+      <!-- Command K overlay mock -->
+      <div class="card" style="margin-top:10px;overflow:hidden">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+          <span style="font-size:12px">⌘K</span><input readonly value="scraper pinheiros" style="flex:1;border:none;outline:none;font-size:12px;background:transparent"/>
+          <span class="badge">ESC fecha</span>
+        </div>
+        <div style="padding:6px;display:flex;flex-direction:column">
+          <div style="padding:8px 10px;border-radius:6px;background:var(--accent-soft);display:flex;justify-content:space-between"><span style="font-size:12px;color:var(--accent);font-weight:600">◎ Ir para Scraper → Pinheiros</span><span style="font-size:10px;color:var(--muted)">↵</span></div>
+          <div style="padding:8px 10px;font-size:12px;color:var(--muted)">＋ Nova extração em Pinheiros</div>
+          <div style="padding:8px 10px;font-size:12px;color:var(--muted)">✦ Scoring: 3 leads com site lento</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- OVERVIEW -->
+    <section class="slide" id="overview">
+      <div class="slide-header">
+        <div class="kicker">04 · Visão geral</div>
+        <h2>Centro de comando — metric-strip, não card-grid</h2>
+        <p>Antes: 4 stats cards + 4 launcher cards = 8 cards na dobra. Depois: strip inline (sem cards) + 2 primários + lista compacta secundária.</p>
+      </div>
+      <div class="window">
+        <div class="win-bar"><span class="win-dot r"></span><span class="win-dot y"></span><span class="win-dot g"></span><span class="win-title">Visão geral · /overview</span></div>
+        <div style="padding:12px;background:var(--bg);display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px">
+            <div><div style="font-size:15px;font-weight:800;letter-spacing:-.015em">Centro de Comando</div><div style="font-size:11px;color:var(--muted)">Visão geral respirável — 1 accent, muito branco.</div></div>
+            <div class="btn primary">＋ Nova extração</div>
+          </div>
+          <div class="metric-strip">
+            <div><div class="lb">Total de leads</div><div class="vl">142</div><div class="sb">Base local</div></div>
+            <div><div class="lb">WhatsApp</div><div class="vl" style="color:var(--emerald-600)">Online</div><div class="sb">Multi-sessão</div></div>
+            <div><div class="lb">Fila</div><div class="vl">Pronto</div><div class="sb">Scraper ocioso</div></div>
+            <div><div class="lb">Ligar primeiro</div><div class="vl">87</div><div class="sb" style="color:var(--emerald-600)">+12% semana</div></div>
+          </div>
+          <div class="wire-cards">
+            <div class="wire-card annot" data-n="1"><div style="width:30px;height:30px;border-radius:7px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center">◎</div><h4>Módulo de Leads</h4><p>Busca no Google Maps por nicho e região com enriquecimento de e-mails.</p><span class="link">Explorar →</span></div>
+            <div class="wire-card annot" data-n="2"><div style="width:30px;height:30px;border-radius:7px;background:rgba(5,150,105,.08);color:var(--emerald-600);display:grid;place-items:center">✦</div><h4>Quem ligar primeiro</h4><p>Auditoria de sites (pixel, SSL, mobile) + pitch de IA pronto.</p><span class="link" style="color:var(--emerald-600)">Abrir fila →</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div style="border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--surface);display:flex;gap:10px;align-items:center"><div style="width:28px;height:28px;border-radius:7px;background:var(--slate-100);display:grid;place-items:center">◐</div><div><div style="font-size:11px;font-weight:600">WhatsApp Omnichannel</div><div style="font-size:10px;color:var(--muted)">Multi-sessão, disparos anti-ban →</div></div></div>
+            <div style="border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--surface);display:flex;gap:10px;align-items:center"><div style="width:28px;height:28px;border-radius:7px;background:var(--slate-100);display:grid;place-items:center">▭</div><div><div style="font-size:11px;font-weight:600">Painel de Análises</div><div style="font-size:10px;color:var(--muted)">Métricas de cobertura e categorias →</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="legend"><span><i style="background:var(--accent)"></i> 1 strip 4 métricas (era 4 cards)</span><span><i style="background:var(--surface);border:1px solid var(--border)"></i> 2 cards primários (era 4)</span><span><i style="background:var(--slate-100)"></i> secundários viram lista compacta</span></div>
+    </section>
+
+    <!-- SCRAPER -->
+    <section class="slide" id="scraper">
+      <div class="slide-header">
+        <div class="kicker">05 · Scraper Maps</div>
+        <h2>Mapa limpo + feed com pills — sem floating clutter</h2>
+        <p>Antes: 2 floating cards + telemetry + 2 KPIs empilhados sobre o mapa (`MapScraperView.jsx:471+517`). Depois: mapa 100% canvas, controls só toggle ruas/satélite + tabela, métricas viram chips inline no feed.</p>
+      </div>
+      <div class="window">
+        <div class="win-bar"><span class="win-dot r"></span><span class="win-dot y"></span><span class="win-dot g"></span><span class="win-title">Scraper Maps · /scraper · ◎ Pinheiros — 30 leads</span></div>
+        <div style="padding:10px;background:var(--bg)">
+          <div class="map-layout">
+            <div class="map-canvas annot" data-n="1" style="min-height:320px">
+              <div class="map-bar"><span class="map-chip">Pesquisa ativa: Todas (142) ▾</span><span class="map-chip">Pronto ●</span></div>
+              <div style="position:absolute;inset:0;display:grid;place-items:center;z-index:1"><span style="font-size:11px;color:var(--slate-500);background:rgba(255,255,255,.9);padding:6px 10px;border-radius:999px;border:1px solid var(--border)">CartoDB Voyager · pins 16px · panTo sem reset de zoom</span></div>
+              <div class="map-pin" style="left:34%;top:42%">●</div><div class="map-pin" style="left:48%;top:36%;background:var(--accent)">●</div><div class="map-pin" style="left:56%;top:52%">●</div><div class="map-pin" style="left:41%;top:58%">●</div>
+              <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px;z-index:2"><span class="map-chip">▦ Ruas/Sat</span><span class="map-chip">▭ Tabela</span></div>
+              <div style="position:absolute;bottom:8px;left:8px;right:8px;background:rgba(255,255,255,.96);border:1px solid var(--border);border-radius:6px;padding:6px 8px;display:flex;gap:10px;font-size:10px;color:var(--muted)"><span>Raio 5km</span><span>·</span><span>Profundidade L2</span><span>·</span><span style="margin-left:auto">Filtrados 142</span></div>
+            </div>
+            <div class="feed annot" data-n="2">
+              <div class="feed-head"><div><b>Feed ao vivo</b><div style="font-size:10px;color:var(--muted)">142 encontrados · 38% com e-mail</div></div><span class="badge green">● Transmitindo</span></div>
+              <div style="padding:8px 10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;border-bottom:1px solid var(--border)">
+                <div style="background:var(--slate-50);border:1px solid var(--border);border-radius:6px;padding:6px 8px"><div style="font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase">Leads</div><div style="font-size:13px;font-weight:800">142 <span style="font-size:10px;color:var(--emerald-600)">↑12%</span></div></div>
+                <div style="background:var(--slate-50);border:1px solid var(--border);border-radius:6px;padding:6px 8px"><div style="font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase">E-mails</div><div style="font-size:13px;font-weight:800">54 <span style="font-size:10px;color:var(--muted)">38%</span></div></div>
+              </div>
+              <div class="feed-list">
+                <div class="feed-item selected"><div class="top"><span class="name">● Clínica Pinheiros</span><span class="badge green">Verificado</span></div><div class="addr">◎ R. dos Pinheiros, 812 · Odontologia</div><div class="pill-row"><span class="pill-sm">✉ clinica@ex.com</span><span class="pill-sm">☎ 11 99999</span></div></div>
+                <div class="feed-item"><div class="top"><span class="name">Barbearia 509</span><span class="badge" style="background:#FEF2F2;color:var(--red-600);border-color:#FECACA">Sem e-mail</span></div><div class="addr">◎ R. Aspicuelta · Barbearia</div><div class="pill-row"><span class="pill-sm">☎ 11 98888</span><span class="pill-sm">◯ site</span></div></div>
+                <div class="feed-item"><div class="top"><span class="name">Studio A</span><span class="badge green">Verificado</span></div><div class="addr">◎ Vila Madalena</div><div class="pill-row"><span class="pill-sm">✉ contato@studio.com</span></div></div>
+              </div>
+              <div style="padding:8px;border-top:1px solid var(--border);display:flex;gap:8px"><span class="btn" style="flex:1;text-align:center">Exportar CSV</span><span class="btn">⧉</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:10px">
+        <div class="note"><b>1 · Mapa sem clutter:</b> remove <span class="mono">map-floating-scan-card</span> e <span class="mono">telemetry</span>. Barra única no bottom do canvas, só layer + tabela como controls.</div>
+        <div class="note"><b>2 · Feed denso mas leve:</b> KPIs viram chips 2-col, sem card grande. Lista tem 44px target, pills clicáveis copiam. Referência: Superhuman split 62/38.</div>
+      </div>
+    </section>
+
+    <!-- SCORING -->
+    <section class="slide" id="scoring">
+      <div class="slide-header">
+        <div class="kicker">06 · Lead Scoring</div>
+        <h2>Quem ligar primeiro — drawer, não 8 selects empilhados</h2>
+        <p>Antes: 8 filtros + 2 listas sempre visíveis (`LeadScoring.jsx:1250`). Depois: filter bar 2 campos visíveis + “Filtros avançados” colapsável, grupos em drawer direito.</p>
+      </div>
+      <div class="window">
+        <div class="win-bar"><span class="win-dot r"></span><span class="win-dot y"></span><span class="win-dot g"></span><span class="win-title">Lead Scoring · /scoring · 87 para ligar</span></div>
+        <div style="padding:10px;background:var(--bg);display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><b style="font-size:12px">Quem ligar primeiro</b><div style="font-size:11px;color:var(--muted)">Prioridade = site com falhas (pixel, HTTPS, celular, WhatsApp).</div></div>
+            <div style="display:flex;gap:6px"><span class="btn">Ajustes</span><span class="btn primary">▶ Analisar sites</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase">Já analisados</div><div style="font-size:16px;font-weight:800">87</div></div>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase">Ligar primeiro</div><div style="font-size:16px;font-weight:800;color:var(--emerald-600)">24</div></div>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase">Fecharam</div><div style="font-size:16px;font-weight:800">3 · R$ 7.200</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:220px 1fr 260px;gap:10px;min-height:280px">
+            <!-- filters -->
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:11px;font-weight:700">Encontrar leads ▾</div>
+              <div class="field"><label>Buscar</label><input placeholder="Nome, cidade…"/></div>
+              <div class="field"><label>Prioridade</label><select><option>Todas</option><option>Ligar primeiro</option></select></div>
+              <div style="border:1px dashed var(--slate-300);border-radius:6px;padding:8px;font-size:11px;color:var(--muted);text-align:center">＋ Filtros avançados (6 ocultos)</div>
+              <div style="font-size:11px;font-weight:600;margin-top:4px">Pesquisas · 3</div>
+              <div style="display:flex;flex-direction:column;gap:4px;font-size:11px"><span style="background:var(--accent-soft);color:var(--accent);padding:6px 8px;border-radius:6px">● Pinheiros — 24/30</span><span style="padding:6px 8px;border:1px solid var(--border);border-radius:6px">○ Centro — 12/20</span></div>
+              <div style="font-size:11px;font-weight:600;margin-top:4px">Meus grupos · 2</div>
+              <div style="font-size:11px;color:var(--muted);border:1px dashed var(--border);padding:8px;border-radius:6px;text-align:center">＋ Criar grupo da seleção</div>
+            </div>
+            <!-- table -->
+            <div class="table">
+              <div class="table-head"><span>#</span><span>Empresa</span><span>Prioridade</span><span>Nota</span><span>Status</span></div>
+              <div class="table-row" style="background:var(--accent-soft)"><span>1</span><span><b>Clínica Pinheiros</b><br/><span style="font-size:10px;color:var(--muted)">clinicapinheiros.com.br</span></span><span><span class="badge" style="background:#FEF2F2;color:var(--red-600)">Alta · ligar</span></span><span><b>82</b>/100</span><span><span class="badge green">Boa oport.</span></span></div>
+              <div class="table-row"><span>2</span><span>Barbearia 509</span><span><span class="badge">Depois</span></span><span>41</span><span>Não contatei</span></div>
+              <div class="table-row"><span>3</span><span>Studio A</span><span><span class="badge accent">Vale a pena</span></span><span>64</span><span>Já contatei</span></div>
+              <div style="padding:8px;font-size:10px;color:var(--muted);text-align:center">Selecione linhas · density: conforto / compacto</div>
+            </div>
+            <!-- detail -->
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:11px;font-weight:700">Clínica Pinheiros · 82/100</div>
+              <div style="font-size:10px;color:var(--muted)">Site sem pixel, HTTPS ok, lento 4.2s, quebra no celular.</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px">
+                <div style="padding:6px;border:1px solid var(--border);border-radius:6px;background:#FEF2F2">✕ Sem pixel</div>
+                <div style="padding:6px;border:1px solid var(--border);border-radius:6px;background:#ECFDF5">✓ HTTPS</div>
+                <div style="padding:6px;border:1px solid var(--border);border-radius:6px;background:#FEF2F2">✕ Lento</div>
+                <div style="padding:6px;border:1px solid var(--border);border-radius:6px;background:#FEF2F2">✕ Mobile</div>
+              </div>
+              <div style="background:var(--slate-50);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:11px">“Olá Ana, vi que o site demora 4s e perde quem vem do celular. Posso mandar um checklist de 3 ajustes que liberam captação hoje?” <div style="margin-top:6px;display:flex;gap:6px"><span class="btn primary">Copiar pitch</span><span class="btn">Abrir site</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WHATSAPP -->
+    <section class="slide" id="whatsapp">
+      <div class="slide-header">
+        <div class="kicker">07 · WhatsApp</div>
+        <h2>Omnichannel — lista 32% + conversa + funil discreto</h2>
+        <p>Antes: `WhatsAppPanel.jsx` 1800 linhas com tabs + filtros + mídia tudo exposto. Depois: tabs secundárias no topo da view (Conexão · Conversas · Campanhas), lista com search pill + pills de filtro 44px.</p>
+      </div>
+      <div class="window">
+        <div class="win-bar"><span class="win-dot r"></span><span class="win-dot y"></span><span class="win-dot g"></span><span class="win-title">WhatsApp · /whatsapp · 2 conexões online</span></div>
+        <div style="padding:10px;background:var(--bg);display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;gap:6px">
+            <span class="badge accent">Conexão</span><span class="badge" style="background:var(--accent-soft);color:var(--accent)">Conversas</span><span class="badge">Campanhas</span><span class="badge">Config</span>
+            <span style="margin-left:auto;display:flex;gap:6px"><span class="badge green">● 2 online</span><span class="badge">11 99999 · Baileys</span></span>
+          </div>
+          <div class="chat-shell">
+            <div class="chat-list">
+              <div class="chat-list-head">
+                <div class="chat-search">⌕ Buscar conversa…</div>
+                <div class="chat-filters"><span class="badge accent">Todas 42</span><span class="badge">Não lidas 5</span><span class="badge">Grupos</span></div>
+              </div>
+              <div style="flex:1;overflow:auto">
+                <div class="chat-thread active"><div class="avatar">AP</div><div><b>Ana · Clínica Pinheiros</b><p>Você: posso mandar o checklist?</p></div><span style="margin-left:auto;font-size:10px;color:var(--muted)">14:32</span></div>
+                <div class="chat-thread"><div class="avatar" style="background:#ECFDF5;color:var(--emerald-600)">B</div><div><b>Barbearia 509</b><p>Áudio 0:12</p></div><span style="margin-left:auto;font-size:10px;color:var(--muted)">ontem</span></div>
+                <div class="chat-thread"><div class="avatar">S</div><div><b>Studio A</b><p>Obrigado! Vamos marcar?</p></div></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;min-height:320px">
+              <div style="height:44px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:8px;padding:0 10px">
+                <div class="avatar">AP</div><div><b style="font-size:11px">Ana — Clínica Pinheiros</b><div style="font-size:10px;color:var(--muted)">11 99999 · online · 3 etiquetas</div></div>
+                <span style="margin-left:auto" class="badge">Ver perfil</span>
+              </div>
+              <div class="chat-room">
+                <div class="bubble in">Olá! Vi que o site demora um pouco no celular. Quer um checklist rápido?</div>
+                <div class="bubble out">Olá Ana! Claro, manda sim. Obrigada pelo contato 🙏</div>
+                <div class="bubble in">Perfeito — mando em 1 min. São 3 ajustes que liberam captação hoje.</div>
+                <div style="margin-top:6px;background:var(--accent-soft);border:1px solid rgba(99,102,241,.18);border-radius:8px;padding:8px;display:flex;gap:6px;align-items:center;font-size:11px"><span>✦</span> Biblioteca de gatilhos: Apresentação · Follow-up · Oferta <span style="margin-left:auto" class="btn primary">Enviar snippet</span></div>
+                <div class="composer"><span style="font-size:11px;color:var(--muted)">Aa Digite uma mensagem…</span><span style="margin-left:auto" class="btn primary">Enviar</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CAMPAIGNS -->
+    <section class="slide" id="campaigns">
+      <div class="slide-header">
+        <div class="kicker">08 · Campanhas</div>
+        <h2>Campanhas como wizard — 3 passos, não 1 tela gigante</h2>
+        <p>Dentro de WhatsApp → Campanhas. Stepper + progressive disclosure. Antes era form único gigante; agora cada passo foca em 1 ação.</p>
+      </div>
+      <div class="window">
+        <div class="win-bar"><span class="win-dot r"></span><span class="win-dot y"></span><span class="win-dot g"></span><span class="win-title">WhatsApp → Campanhas · Nova campanha</span></div>
+        <div style="padding:14px;background:var(--bg);display:flex;flex-direction:column;gap:12px">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Criar campanha</div>
+            <div class="stepper"><div class="step on"></div><div class="step on"></div><div class="step"></div></div>
+            <div style="display:flex;gap:12px;font-size:11px"><span style="color:var(--accent);font-weight:600">1 Destinatários ✓</span><span style="color:var(--accent);font-weight:600">2 Mensagem ✓</span><span style="color:var(--muted)">3 Agendamento</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
+              <div style="font-size:11px;font-weight:700">Destinatários · 24 selecionados</div>
+              <div style="margin-top:8px;display:flex;gap:6px"><span class="badge accent">Scrape: Pinheiros 18</span><span class="badge">Grupos 4</span><span class="badge">Manual 2</span></div>
+              <div style="margin-top:8px;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:11px;color:var(--muted)">☑ Clínica Pinheiros · 11 99999<br/>☑ Studio A · 11 98888<br/><span style="color:var(--accent)">＋ Adicionar número</span></div>
+              <div style="margin-top:8px;display:flex;gap:6px"><span class="btn">Limpar</span><span class="btn primary">Continuar</span></div>
+            </div>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
+              <div style="font-size:11px;font-weight:700">Mensagem · preview com variáveis</div>
+              <div style="margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--slate-50);font-size:11px">Olá {{name}}, vi que o site {{site}} demora {{tempo}} no celular. Posso mandar um checklist de 3 ajustes?</div>
+              <div style="margin-top:8px;display:flex;gap:6px;font-size:11px"><span class="pill">Intervalo 30s</span><span class="pill">Janela 07:00–18:00</span></div>
+              <div style="margin-top:8px;display:flex;gap:6px"><span class="btn">Salvar rascunho</span><span class="btn primary">Agendar</span></div>
+            </div>
+          </div>
+          <div style="background:#ECFDF5;border:1px solid rgba(5,150,105,.18);border-radius:8px;padding:10px;display:flex;gap:8px;align-items:center;font-size:11px;color:var(--emerald-600)"><span>●</span> Anti-ban: limite diário 30/dia por número · intervalo 30s · pausa fora da janela</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section class="slide" id="dashboard">
+      <div class="slide-header">
+        <div class="kicker">09 · Dashboard</div>
+        <h2>Painel de análises — strip + barras simples</h2>
+        <p>Sem card-grid repetido. Métricas em strip, categorias em barras horizontais (1 indigo), histórico como lista.</p>
+      </div>
+      <div class="window">
+        <div class="win-bar"><span class="win-dot r"></span><span class="win-dot y"></span><span class="win-dot g"></span><span class="win-title">Dashboard · /dashboard</span></div>
+        <div style="padding:12px;background:var(--bg);display:flex;flex-direction:column;gap:12px">
+          <div class="metric-strip">
+            <div><div class="lb">Total</div><div class="vl">142</div><div class="sb">únicos</div></div>
+            <div><div class="lb">Com telefone</div><div class="vl" style="color:var(--emerald-600)">118</div><div class="sb">83% · WhatsApp</div></div>
+            <div><div class="lb">Com site</div><div class="vl" style="color:var(--accent)">64</div><div class="sb">45% · scoring</div></div>
+            <div><div class="lb">Com Instagram</div><div class="vl" style="color:#DB2777">41</div><div class="sb">29% social</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:12px">
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
+              <div style="font-size:11px;font-weight:700;display:flex;align-items:center;gap:6px"><span style="color:var(--accent)">▭</span> Distribuição por categoria</div>
+              <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:grid;grid-template-columns:14px 1fr 28px;gap:8px;align-items:center;font-size:11px"><span style="font-weight:700;color:var(--muted)">#1</span><div><div>Odontologia</div><div style="height:6px;background:var(--slate-100);border-radius:999px;margin-top:4px"><div style="width:72%;height:100%;background:linear-gradient(90deg,var(--accent),#A78BFA);border-radius:999px"></div></div></div><span style="font-weight:700">18</span></div>
+                <div style="display:grid;grid-template-columns:14px 1fr 28px;gap:8px;align-items:center;font-size:11px"><span>#2</span><div><div>Barbearia</div><div style="height:6px;background:var(--slate-100);border-radius:999px;margin-top:4px"><div style="width:48%;height:100%;background:var(--accent);border-radius:999px"></div></div></div><span>12</span></div>
+                <div style="display:grid;grid-template-columns:14px 1fr 28px;gap:8px;align-items:center;font-size:11px"><span>#3</span><div><div>Academia</div><div style="height:6px;background:var(--slate-100);border-radius:999px;margin-top:4px"><div style="width:38%;height:100%;background:var(--accent);border-radius:999px"></div></div></div><span>9</span></div>
+              </div>
+            </div>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
+              <div style="font-size:11px;font-weight:700;display:flex;align-items:center;gap:6px"><span style="color:var(--accent)">◷</span> Histórico de buscas</div>
+              <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;font-size:11px">
+                <div style="display:flex;justify-content:space-between;padding:8px;border:1px solid var(--border);border-radius:6px"><span>◎ Pinheiros — odontologia</span><span style="font-weight:700">30</span></div>
+                <div style="display:flex;justify-content:space-between;padding:8px;border:1px solid var(--border);border-radius:6px"><span>◎ Centro — barbearia</span><span>12</span></div>
+                <div style="display:flex;justify-content:space-between;padding:8px;border:1px solid var(--border);border-radius:6px"><span>◎ Vila Madalena — studio</span><span>22</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODAL -->
+    <section class="slide" id="modal">
+      <div class="slide-header">
+        <div class="kicker">10 · Overlay</div>
+        <h2>Nova extração — modal 520, overlay sem blur pesado</h2>
+        <p>Antes: blur 4px + radius 16. Depois: overlay rgba(15,23,42,.32) sem blur, modal 520, borda 1px, foco indigo.</p>
+      </div>
+      <div style="background:rgba(15,23,42,.32);border:1px solid var(--border);border-radius:12px;padding:24px;display:grid;place-items:center">
+        <div class="modal-demo">
+          <div class="modal-head"><div><b>Nova Extração Google Maps</b><p>Busca + enriquecimento automático</p></div><span style="width:28px;height:28px;border-radius:6px;background:var(--slate-100);display:grid;place-items:center">✕</span></div>
+          <div class="modal-body">
+            <div class="field"><label>Nicho / Palavra-chave</label><div style="display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:6px;padding:0 10px;height:32px"><span style="color:var(--muted)">⌕</span><input placeholder="SaaS, Advocacia, Restaurantes" style="border:none;flex:1;outline:none;font-size:12px"/></div></div>
+            <div class="form-row"><div class="field"><label>Bairro</label><input placeholder="Pinheiros"/></div><div class="field"><label>Cidade</label><input value="São Paulo"/></div></div>
+            <div class="form-row"><div class="field"><label>Máx. leads</label><select><option>30 (Recomendado)</option></select></div><div class="field"><label>Raio</label><select><option>5km Padrão</option></select></div></div>
+            <div style="background:var(--accent-soft);border:1px solid rgba(99,102,241,.18);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--accent)">✦ Enriquecimento de e-mails, telefones e redes sociais ativo</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--border)"><span class="btn">＋ Adicionar à fila</span><span class="btn primary">▶ Iniciar agora</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STATES -->
+    <section class="slide" id="states">
+      <div class="slide-header">
+        <div class="kicker">11 · Feedback</div>
+        <h2>Estados vazios, loading e erro — 1 frase + 1 CTA</h2>
+        <p>Referência Raycast. Sem ilustração pesada, sem parágrafo.</p>
+      </div>
+      <div class="grid3">
+        <div class="card card-pad" style="text-align:center;padding:18px">
+          <div style="width:40px;height:40px;border-radius:999px;background:var(--slate-100);display:grid;place-items:center;margin:0 auto">⌕</div>
+          <div style="font-size:12px;font-weight:700;margin-top:8px">Nenhum lead nesta seleção</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Clique em Nova Extração para começar.</div>
+          <div class="btn primary" style="margin:10px auto 0;display:inline-flex">＋ Nova extração</div>
+        </div>
+        <div class="card card-pad">
+          <div style="font-size:11px;font-weight:700">Carregando…</div>
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+            <div style="height:10px;border-radius:999px;background:var(--slate-100);overflow:hidden"><div style="width:44%;height:100%;background:var(--accent);border-radius:999px;animation:load 1.2s ease infinite"></div></div>
+            <div style="height:36px;border:1px solid var(--border);border-radius:6px;background:linear-gradient(90deg,var(--slate-50) 25%, var(--slate-100) 50%, var(--slate-50) 75%);background-size:200% 100%;animation:shimmer 1.2s linear infinite"></div>
+            <div style="height:36px;border:1px solid var(--border);border-radius:6px;background:var(--slate-50)"></div>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:8px">Skeleton, não spinner full-page. CLS &lt;0.1</div>
+        </div>
+        <div class="card card-pad" style="border-color:#FECACA;background:#FFFBFB">
+          <div style="font-size:11px;font-weight:700;color:var(--red-600)">Falha ao carregar</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Verifique a conexão ou tente novamente.</div>
+          <div style="margin-top:8px;display:flex;gap:6px"><span class="btn primary">Tentar de novo</span><span class="btn">Ver log</span></div>
+        </div>
+      </div>
+      <style>@keyframes load{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}} @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}</style>
+      <div class="note" style="margin-top:10px">Toast já existe em <span class="mono">NotificationCenter.jsx:216</span> — manter progress bar 5s, só trocar easing para var(--dur-slow). Adicionar undo para “Apagar pesquisa”.</div>
+    </section>
+
+    <!-- TOKENS -->
+    <section class="slide" id="tokens">
+      <div class="slide-header">
+        <div class="kicker">12 · Sistema</div>
+        <h2>Tokens & motion — 1 accent, 1 fonte, 1 raio</h2>
+        <p>Flat, sem sombras múltiplas, raio 6/8/12, motion só com causalidade.</p>
+      </div>
+      <div class="grid2">
+        <div class="card card-pad">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Paleta light-first</div>
+          <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="display:flex;gap:8px;align-items:center"><span style="width:26px;height:26px;border-radius:6px;background:var(--accent)"></span><span style="font-size:11px"><b>#6366F1</b> indigo 500<br/><span style="color:var(--muted)">CTA / active / ring</span></span></div>
+            <div style="display:flex;gap:8px;align-items:center"><span style="width:26px;height:26px;border-radius:6px;background:var(--slate-900)"></span><span style="font-size:11px"><b>#0F172A</b> slate 900<br/><span style="color:var(--muted)">texto</span></span></div>
+            <div style="display:flex;gap:8px;align-items:center"><span style="width:26px;height:26px;border-radius:6px;background:var(--slate-50);border:1px solid var(--border)"></span><span style="font-size:11px"><b>#F8FAFC</b> slate 50<br/><span style="color:var(--muted)">page bg</span></span></div>
+            <div style="display:flex;gap:8px;align-items:center"><span style="width:26px;height:26px;border-radius:6px;background:var(--emerald-600)"></span><span style="font-size:11px"><b>#059669</b> emerald<br/><span style="color:var(--muted)">sucesso</span></span></div>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--muted)">Contraste AA: indigo 500 sobre branco passa 4.5:1 em 14px/500. Dark usa indigo 400 #818CF8.</div>
+        </div>
+        <div class="card card-pad">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Tipografia · Inter 14 base</div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;font-size:12px">
+            <div style="display:flex;justify-content:space-between"><span style="font-size:20px;font-weight:700;letter-spacing:-.015em">H1 20/700</span><span style="color:var(--muted)">page title</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-size:16px;font-weight:600">H2 16/600</span><span style="color:var(--muted)">section</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-size:14px">Body 14/400 1.5</span><span style="color:var(--muted)">texto</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase">Label 11/600</span><span style="color:var(--muted)">kicker</span></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Max 65ch. Hierarchy por weight + tracking, não só tamanho (anti-slop #6).</div>
+          </div>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="card card-pad">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Motion tokens</div>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:11px">
+            <div style="border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><b>120ms</b><div style="color:var(--muted)">fast · hover</div></div>
+            <div style="border:1px solid var(--accent);border-radius:8px;padding:10px;text-align:center;background:var(--accent-soft)"><b>180ms</b><div style="color:var(--accent)">base · view</div></div>
+            <div style="border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><b>280ms</b><div style="color:var(--muted)">slow · modal</div></div>
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:var(--muted)">ease-out enter, ease-in exit (60%). Só transform/opacity. Stagger 30ms max 6 itens. Respeita prefers-reduced-motion.</div>
+          <div style="margin-top:8px;display:flex;gap:6px"><span class="badge">viewIn translateY 4px</span><span class="badge">hover bg 120ms</span><span class="badge">modal scale .98→1</span></div>
+        </div>
+        <div class="card card-pad">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Raio & elevação</div>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <div style="flex:1;text-align:center"><div style="width:100%;height:36px;border:1px solid var(--border);border-radius:6px;background:var(--surface)"></div><div style="font-size:10px;color:var(--muted);margin-top:4px">6 sm</div></div>
+            <div style="flex:1;text-align:center"><div style="width:100%;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--surface)"></div><div style="font-size:10px;color:var(--muted);margin-top:4px">8 md</div></div>
+            <div style="flex:1;text-align:center"><div style="width:100%;height:36px;border:1px solid var(--border);border-radius:12px;background:var(--surface)"></div><div style="font-size:10px;color:var(--muted);margin-top:4px">12 lg</div></div>
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:var(--muted)">1 nível de sombra: <span class="mono">0 1px 3px rgba(15,23,42,.06)</span>. Sem glassmorphism múltiplo.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROADMAP -->
+    <section class="slide" id="roadmap">
+      <div class="slide-header">
+        <div class="kicker">13 · Execução</div>
+        <h2>Roadmap sem rewrite — 4 fases</h2>
+        <p>Cada fase é shippable. Começa por tokens (zero breaking) e termina em QA.</p>
+      </div>
+      <div class="grid2">
+        <div class="card card-pad" style="border-left:3px solid var(--accent)">
+          <div style="font-size:11px;font-weight:700;color:var(--accent)">FASE 0 · 1 dia · tokens light-first</div>
+          <div style="font-size:12px;font-weight:600;margin-top:4px">Split styles.css → tokens.css + base + components</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6">Default :root vira light #F8FAFC, dark vira override. Migrar 193 hex → tokens. <span class="mono">main.js:1352 return "light"</span> + <span class="mono">resolveWindowBgColor #F8FAFC</span>.</div>
+          <span class="badge accent" style="margin-top:8px;display:inline-block">drop-in: renderer/tokens-clarity.css</span>
+        </div>
+        <div class="card card-pad" style="border-left:3px solid var(--slate-300)">
+          <div style="font-size:11px;font-weight:700;color:var(--muted)">FASE 1 · 2 dias · shell</div>
+          <div style="font-size:12px;font-weight:600;margin-top:4px">Sidebar 220 + header 48 + Campanhas → sub-tab</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6">Unificar titlebar + header, view-transition wrapper, atalhos ⌘1-5, cmd-K com fuse.js.</div>
+        </div>
+        <div class="card card-pad" style="border-left:3px solid var(--slate-300)">
+          <div style="font-size:11px;font-weight:700;color:var(--muted)">FASE 2 · 3 dias · des-densificar views</div>
+          <div style="font-size:12px;font-weight:600;margin-top:4px">Overview strip, Scraper mapa limpo, Scoring drawer</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6">Remover floating cards, skeletons, density toggle. Tabela 11px uppercase, row 40.</div>
+        </div>
+        <div class="card card-pad" style="border-left:3px solid var(--emerald-600)">
+          <div style="font-size:11px;font-weight:700;color:var(--emerald-600)">FASE 3-4 · 2 dias · polish & QA</div>
+          <div style="font-size:12px;font-weight:600;margin-top:4px">Motion tokens + checklist a11y</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6">360px sem scroll-x, targets 44px, focus-visible, keyboard nav, CLS &lt;0.1, virtualize &gt;50 leads.</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        <a href="./renderer/tokens-clarity.css" target="_blank" class="btn primary">Ver tokens-clarity.css →</a>
+        <a href="./docs/preview-clarity-shell.html" target="_blank" class="btn">Abrir preview shell →</a>
+        <a href="./docs/redesign-auditoria-2026-08-20.md" target="_blank" class="btn">Ler auditoria completa →</a>
+      </div>
+      <div class="note" style="margin-top:12px">Arquivos gerados: <span class="mono">docs/redesign-auditoria-2026-08-20.md</span> (pesquisa densa) · <span class="mono">renderer/tokens-clarity.css</span> (tokens) · <span class="mono">wireframes-clarity.html</span> (esta apresentação).</div>
+    </section>
+
+    <div style="text-align:center;padding:18px 0 8px;border-top:1px solid var(--border);margin-top:10px">
+      <div style="font-size:11px;color:var(--muted)">Sigma GMaps · Sigma Clarity — Technical clarity workspace · Inter 14 · indigo #6366F1 · 180ms ease-out</div>
+      <div style="font-size:11px;color:var(--muted)">Referências: Linear · Stripe · Notion · Raycast · Superhuman · Vercel — skills: anti-ai-slop · intuitive-product-ui · ui-ux-pro-max · design-system</div>
+    </div>
+
+  </main>
+</div>
+
+<div class="controls">
+  <button class="ctrl" id="prev" title="Anterior (↑)">‹</button>
+  <button class="ctrl" id="next" title="Próximo (↓)">›</button>
+</div>
+
+<script>
+  const ids = ["cover","principios","sitemap","shell","overview","scraper","scoring","whatsapp","campaigns","dashboard","modal","states","tokens","roadmap"];
+  let idx = 0;
+  const navLinks = [...document.querySelectorAll('.side a')];
+  const progress = document.getElementById('progress');
+  function setActive(i){
+    idx = Math.max(0, Math.min(ids.length-1, i));
+    const id = ids[idx];
+    document.getElementById(id)?.scrollIntoView({behavior:'smooth', block:'start'});
+    navLinks.forEach(a=> a.classList.toggle('active', a.getAttribute('href') === '#'+id));
+    progress.style.width = ((idx+1)/ids.length*100)+'%';
+    location.hash = id;
+  }
+  document.getElementById('prev').onclick = ()=> setActive(idx-1);
+  document.getElementById('next').onclick = ()=> setActive(idx+1);
+  navLinks.forEach((a,i)=> a.addEventListener('click', e=>{
+    e.preventDefault();
+    setActive(i);
+  }));
+  // keyboard
+  addEventListener('keydown', e=>{
+    if(e.target.tagName === 'INPUT') return;
+    if(e.key==='ArrowDown' || e.key==='j') { e.preventDefault(); setActive(idx+1); }
+    if(e.key==='ArrowUp' || e.key==='k') { e.preventDefault(); setActive(idx-1); }
+    if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); const el=document.querySelector('.search-pill'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); }
+  });
+  // observer for scroll
+  const obs = new IntersectionObserver(entries=>{
+    entries.forEach(ent=>{
+      if(ent.isIntersecting){
+        const id = ent.target.id;
+        const i = ids.indexOf(id);
+        if(i>=0){ idx=i; navLinks.forEach(a=> a.classList.toggle('active', a.getAttribute('href')==='#'+id)); progress.style.width=((i+1)/ids.length*100)+'%'; }
+      }
+    });
+  }, {rootMargin:'-40% 0px -50% 0px', threshold:0});
+  ids.forEach(id=>{ const el=document.getElementById(id); if(el) obs.observe(el); });
+  // init from hash
+  const h = location.hash.slice(1);
+  const hi = ids.indexOf(h);
+  if(hi>=0) setActive(hi); else setActive(0);
+  // progress on scroll
+  addEventListener('scroll', ()=>{
+    const sc = window.scrollY / (document.documentElement.scrollHeight - window.innerHeight);
+    progress.style.width = (sc*100)+'%';
+  }, {passive:true});
+</script>
+</body>
+</html>

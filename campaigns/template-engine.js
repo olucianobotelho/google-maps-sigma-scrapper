@@ -13,6 +13,14 @@ const VARIABLE_MAP = {
   'avaliacoes': 'totalReviews',
   'reviews': 'totalReviews',
   'totalreviews': 'totalReviews',
+  'score': 'score',
+  'prioridade': 'prioridade',
+  'dor_principal': 'dor_principal',
+  'oportunidade_principal': 'oportunidade_principal',
+  'argumento_principal': 'argumento_principal',
+  'mensagem_whatsapp_ia': 'mensagem_whatsapp_ia',
+  'ticket_estimado': 'ticket_estimado',
+  'chance_resposta': 'chance_resposta',
 };
 
 function resolveVar(varName, leadData) {

@@ -3,6 +3,7 @@ const { AuthStore } = require("./auth-store");
 const { normalizePhone } = require("./phone-normalizer");
 const fs = require("fs");
 const path = require("path");
+const { resolveContactIdentity } = require('./contact-identity-resolver');
 
 class BaileysProvider extends WhatsAppProvider {
   constructor(config, onStatus, onChatEvent, userDataPath) {
@@ -29,6 +30,8 @@ class BaileysProvider extends WhatsAppProvider {
     this._stickerCacheRoot = path.join(userDataPath, "whatsapp-stickers");
     this._syncStats = null;
     this._syncActive = false; // Flag to enable adaptive throttling during sync
+    // messageId -> { filePath, mimetype, kind, jids[] } — mídia enviada por nós (play local)
+    this._outgoingMediaById = new Map();
   }
 
   async connect() {
@@ -253,6 +256,48 @@ class BaileysProvider extends WhatsAppProvider {
               messageId: id,
               status,
             });
+          }
+        });
+
+        // Presence → conversation open proxy (available / composing)
+        this.sock.ev.on("presence.update", (data) => {
+          try {
+            const jid = data?.id;
+            if (!jid || jid.includes("@g.us") || jid.includes("@broadcast")) return;
+            const presences = data?.presences || {};
+            for (const [participant, info] of Object.entries(presences)) {
+              const last = info?.lastKnownPresence || info?.presence || "";
+              if (
+                last === "available" ||
+                last === "composing" ||
+                last === "recording" ||
+                last === "online"
+              ) {
+                logTracking(`presence.update jid=${jid} participant=${participant} presence=${last}`);
+                this.onChatEvent({
+                  type: "conversation-open",
+                  jid: participant?.includes("@") ? participant : jid,
+                  phoneJid: this._getPhoneJid
+                    ? this._getPhoneJid(participant?.includes("@") ? participant : jid)
+                    : jid,
+                  presence: last,
+                });
+              }
+            }
+            // Some Baileys versions send lastKnownPresence at root for 1:1
+            if (!Object.keys(presences).length && data?.lastKnownPresence) {
+              const last = data.lastKnownPresence;
+              if (last === "available" || last === "composing" || last === "recording") {
+                this.onChatEvent({
+                  type: "conversation-open",
+                  jid,
+                  phoneJid: this._getPhoneJid ? this._getPhoneJid(jid) : jid,
+                  presence: last,
+                });
+              }
+            }
+          } catch (e) {
+            /* ignore presence parse errors */
           }
         });
 
@@ -523,13 +568,44 @@ class BaileysProvider extends WhatsAppProvider {
   }
 
   // ─── OTIMIZAÇÃO: Message management with O(1) dedup and RAM limit ───
+  _messageHasDownloadableMedia(msg) {
+    const mc = this._unwrapMessageContent(msg?.message || {});
+    const media =
+      mc.imageMessage ||
+      mc.videoMessage ||
+      mc.audioMessage ||
+      mc.documentMessage ||
+      mc.stickerMessage;
+    // Baileys precisa de mediaKey/url/directPath para baixar
+    return !!(media && (media.mediaKey || media.url || media.directPath));
+  }
+
   _addMessage(jid, msg) {
     if (!msg.key?.id) return;
     if (!this._msgIndex[jid]) this._msgIndex[jid] = new Set();
-    if (this._msgIndex[jid].has(msg.key.id)) return; // Already exists, skip
+    if (!this._messages[jid]) this._messages[jid] = [];
+
+    // Já existe: atualiza se a nova versão tiver mídia baixável (eco do servidor)
+    if (this._msgIndex[jid].has(msg.key.id)) {
+      const idx = this._messages[jid].findIndex((m) => m.key?.id === msg.key.id);
+      if (idx >= 0) {
+        const old = this._messages[jid][idx];
+        if (this._messageHasDownloadableMedia(msg) && !this._messageHasDownloadableMedia(old)) {
+          this._messages[jid][idx] = msg;
+        } else if (msg.messageTimestamp && (!old.messageTimestamp || msg.messageTimestamp >= old.messageTimestamp)) {
+          // merge leve de status
+          this._messages[jid][idx] = {
+            ...old,
+            ...msg,
+            message: msg.message || old.message,
+            status: msg.status != null ? msg.status : old.status,
+          };
+        }
+      }
+      return;
+    }
 
     this._msgIndex[jid].add(msg.key.id);
-    if (!this._messages[jid]) this._messages[jid] = [];
     this._messages[jid].push(msg);
 
     // Capture pushName for unknown contacts
@@ -551,20 +627,28 @@ class BaileysProvider extends WhatsAppProvider {
   }
 
   _getMessageText(msg) {
-    const mc = msg?.message || {};
+    const mc = this._unwrapMessageContent
+      ? this._unwrapMessageContent(msg?.message || {})
+      : msg?.message || {};
     return (
       mc.conversation ||
       mc.extendedTextMessage?.text ||
       mc.imageMessage?.caption ||
       mc.videoMessage?.caption ||
+      mc.documentMessage?.caption ||
       (mc.imageMessage ? "📷 Foto" : "") ||
       (mc.videoMessage ? "🎬 Vídeo" : "") ||
-      (mc.audioMessage ? "🎵 Áudio" : "") ||
+      (mc.audioMessage
+        ? mc.audioMessage.ptt
+          ? "🎤 Mensagem de voz"
+          : "🎵 Áudio"
+        : "") ||
       (mc.documentMessage
         ? "📄 " + (mc.documentMessage.fileName || "Documento")
         : "") ||
       (mc.stickerMessage ? "🌟 Figurinha" : "") ||
       (mc.contactMessage ? "👤 Contato" : "") ||
+      (mc.locationMessage ? "📍 Localização" : "") ||
       ""
     );
   }
@@ -844,12 +928,353 @@ class BaileysProvider extends WhatsAppProvider {
 
   _toMessageJid(to) {
     if (!to) return "";
-    if (String(to).includes("@")) return String(to);
-    const normalized = normalizePhone(String(to));
+    const s = String(to).trim();
+    // Já é JID completo (PN, LID, grupo…)
+    if (s.includes("@")) return s;
+    const normalized = normalizePhone(s);
     const digits = normalized.valid
       ? normalized.number
-      : String(to).replace(/\D/g, "");
-    return digits ? `${digits}@s.whatsapp.net` : String(to);
+      : s.replace(/\D/g, "");
+    return digits ? `${digits}@s.whatsapp.net` : s;
+  }
+
+  /** JID de conversa já conhecida (chat/mensagens) — prioriza envio direto. */
+  _knownChatJid(jid) {
+    if (!jid) return null;
+    if (this._chats?.[jid] || this._messages?.[jid]) return jid;
+    const alias = this._jidAliases?.[jid];
+    if (alias && (this._chats?.[alias] || this._messages?.[alias])) return alias;
+    return null;
+  }
+
+  /**
+   * Resolve o JID real no WhatsApp.
+   * - Grupos / broadcast: como estão
+   * - @lid: NÃO tratar dígitos do LID como telefone (bug que gerava "10700… sem WhatsApp")
+   * - Preferir alias PN (telefone) quando existir
+   * - Conversas já abertas: reutiliza o JID da conversa
+   * - Números novos: valida com onWhatsApp (+ variantes BR 9º dígito)
+   */
+  async resolveSendJid(to) {
+    if (!to) throw new Error("Destinatário vazio");
+    const raw = String(to).trim();
+    if (!this.sock) throw new Error("WhatsApp não conectado");
+
+    // Grupo / status / broadcast
+    if (raw.endsWith("@g.us") || raw.endsWith("@broadcast") || raw === "status@broadcast") {
+      return raw;
+    }
+
+    // ─── LID (Linked ID do WhatsApp multi-device) ─────────────────────────
+    // Ex.: 107005234663576@lid — NÃO é telefone. Enviar como PN se soubermos,
+    // senão enviar direto no @lid da conversa aberta.
+    if (this._isLidJid(raw)) {
+      const phoneJid = this._getPhoneJid(raw);
+      if (phoneJid && this._isPhoneJid(phoneJid)) {
+        console.log("[BAILEYS] LID→PN:", raw, "→", phoneJid);
+        // Tenta validar o PN, mas se falhar ainda usa o LID da conversa
+        try {
+          const digits = phoneJid.replace(/@.*$/, "").replace(/\D/g, "");
+          if (digits && typeof this.sock.onWhatsApp === "function") {
+            const results = await this.sock.onWhatsApp(digits);
+            const hit = Array.isArray(results)
+              ? results.find((r) => r && r.exists !== false && r.jid)
+              : null;
+            if (hit?.jid) {
+              this._registerAlias(raw, hit.jid);
+              return hit.jid;
+            }
+          }
+        } catch (e) {
+          console.warn("[BAILEYS] onWhatsApp no PN do LID falhou:", e.message);
+        }
+        return phoneJid;
+      }
+      // Conversa já existe com esse LID → enviar direto (presença "gravando" já funciona assim)
+      if (this._knownChatJid(raw) || this._chats?.[raw]) {
+        console.log("[BAILEYS] enviando direto no LID da conversa:", raw);
+        return raw;
+      }
+      const alias = this._jidAliases[raw];
+      if (alias) return alias;
+      console.log("[BAILEYS] LID sem alias PN, usando LID:", raw);
+      return raw;
+    }
+
+    // Outros JIDs não-telefone (ex. newsletter) — passa direto
+    if (
+      raw.includes("@") &&
+      !raw.endsWith("@s.whatsapp.net") &&
+      !raw.endsWith("@c.us")
+    ) {
+      return raw;
+    }
+
+    // ─── Já é @s.whatsapp.net / @c.us ────────────────────────────────────
+    if (this._isPhoneJid(raw) || raw.endsWith("@c.us")) {
+      // Se a conversa já está aberta, não precisa revalidar (evita falso negativo)
+      if (this._knownChatJid(raw) || this._chats?.[raw] || this._messages?.[raw]) {
+        return raw.endsWith("@c.us")
+          ? raw.replace("@c.us", "@s.whatsapp.net")
+          : raw;
+      }
+    }
+
+    const fallbackJid = this._toMessageJid(raw);
+    // Se após toMessageJid ainda for LID (edge), não extrair dígitos como telefone
+    if (this._isLidJid(fallbackJid)) {
+      return this.resolveSendJid(fallbackJid);
+    }
+
+    const digits = fallbackJid.replace(/@.*$/, "").replace(/\D/g, "");
+    // LID numérico sem @ (raro) — se parece ID longo e temos chat @lid, use o chat
+    if (digits.length >= 14 && !raw.includes("@")) {
+      const asLid = `${digits}@lid`;
+      if (this._chats?.[asLid] || this._messages?.[asLid]) return asLid;
+    }
+
+    const candidates = [];
+    if (digits && digits.length >= 10 && digits.length <= 15) candidates.push(digits);
+    // BR: 55 + DDD(2) + 8 dígitos (antigo) → tenta inserir o 9
+    if (digits.startsWith("55") && digits.length === 12) {
+      candidates.push(digits.slice(0, 4) + "9" + digits.slice(4));
+    }
+    // BR: 55 + DDD + 9 + 8 dígitos → tenta sem o 9
+    if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
+      candidates.push(digits.slice(0, 4) + digits.slice(5));
+    }
+
+    let lastError = "";
+    let usedOnWhatsApp = false;
+    for (const d of [...new Set(candidates)]) {
+      try {
+        if (typeof this.sock.onWhatsApp !== "function") break;
+        usedOnWhatsApp = true;
+        const results = await this.sock.onWhatsApp(d);
+        const hit = Array.isArray(results)
+          ? results.find((r) => r && r.exists !== false && r.jid)
+          : null;
+        if (hit?.jid) {
+          this._registerAlias(hit.jid, `${d}@s.whatsapp.net`);
+          return hit.jid;
+        }
+        lastError = `Número ${d} não tem WhatsApp (ou não foi encontrado)`;
+      } catch (e) {
+        lastError = e.message || String(e);
+        usedOnWhatsApp = false; // API quebrou → permite fallback
+      }
+    }
+
+    // Conversa aberta com o JID original (PN) mesmo se onWhatsApp falhar
+    const known = this._knownChatJid(raw) || this._knownChatJid(fallbackJid);
+    if (known) {
+      console.warn("[BAILEYS] onWhatsApp sem hit; usando JID da conversa aberta:", known);
+      return known;
+    }
+
+    if (usedOnWhatsApp) {
+      throw new Error(lastError || `Número sem WhatsApp: ${to}`);
+    }
+
+    if (fallbackJid && fallbackJid.includes("@") && !this._isLidJid(fallbackJid)) {
+      console.warn("[BAILEYS] onWhatsApp indisponível, usando JID calculado:", fallbackJid);
+      return fallbackJid;
+    }
+    throw new Error(lastError || `Não foi possível resolver o número: ${to}`);
+  }
+
+  _extractOutgoingText(content) {
+    if (typeof content === "string") return content;
+    if (!content || typeof content !== "object") return "";
+    return (
+      content.text ||
+      content.caption ||
+      content.header ||
+      content.fileName ||
+      ""
+    );
+  }
+
+  _buildOutgoingMessagePayload(content) {
+    if (typeof content === "string") {
+      return { conversation: content };
+    }
+    if (content?.buttons?.length) {
+      return { conversation: content.header || content.text || "" };
+    }
+    if (content?.image) {
+      return {
+        imageMessage: {
+          caption: content.caption || content.text || "",
+          mimetype: content.mimetype || "image/jpeg",
+        },
+      };
+    }
+    if (content?.video) {
+      return {
+        videoMessage: {
+          caption: content.caption || content.text || "",
+          mimetype: content.mimetype || "video/mp4",
+        },
+      };
+    }
+    if (content?.audio) {
+      return {
+        audioMessage: {
+          mimetype: content.mimetype || "audio/ogg",
+          ptt: content.ptt !== false,
+          seconds: Number.isFinite(content.seconds) ? content.seconds : undefined,
+        },
+      };
+    }
+    if (content?.document) {
+      return {
+        documentMessage: {
+          fileName: content.fileName || "arquivo",
+          mimetype: content.mimetype || "application/octet-stream",
+          caption: content.caption || content.text || "",
+        },
+      };
+    }
+    if (content?.sticker) {
+      return { stickerMessage: { mimetype: "image/webp" } };
+    }
+    return { conversation: this._extractOutgoingText(content) };
+  }
+
+  /** Persiste mídia enviada por nós para playback local (evita "Message not found"). */
+  _cacheOutgoingMedia(messageId, jid, content) {
+    if (!messageId || !content) return;
+    try {
+      let buffer = null;
+      let mimetype = "application/octet-stream";
+      let kind = null;
+      if (content.audio) {
+        buffer = Buffer.isBuffer(content.audio) ? content.audio : Buffer.from(content.audio);
+        mimetype = content.mimetype || "audio/ogg";
+        kind = "audio";
+      } else if (content.image) {
+        buffer = Buffer.isBuffer(content.image) ? content.image : Buffer.from(content.image);
+        mimetype = content.mimetype || "image/jpeg";
+        kind = "image";
+      } else if (content.video) {
+        buffer = Buffer.isBuffer(content.video) ? content.video : Buffer.from(content.video);
+        mimetype = content.mimetype || "video/mp4";
+        kind = "video";
+      } else if (content.document) {
+        buffer = Buffer.isBuffer(content.document) ? content.document : Buffer.from(content.document);
+        mimetype = content.mimetype || "application/octet-stream";
+        kind = "document";
+      } else if (content.sticker) {
+        buffer = Buffer.isBuffer(content.sticker) ? content.sticker : Buffer.from(content.sticker);
+        mimetype = "image/webp";
+        kind = "sticker";
+      }
+      if (!buffer || !buffer.length) return;
+      const filePath = this._getMediaCachePath(jid, messageId, mimetype);
+      this._ensureDir(path.dirname(filePath));
+      fs.writeFileSync(filePath, buffer);
+      const prev = this._outgoingMediaById.get(messageId) || { jids: [] };
+      const jids = new Set([...(prev.jids || []), jid].filter(Boolean));
+      this._outgoingMediaById.set(messageId, {
+        filePath,
+        mimetype,
+        kind,
+        jids: [...jids],
+        fileName: content.fileName || null,
+      });
+    } catch (e) {
+      console.warn("[BAILEYS] cache outgoing media:", e.message);
+    }
+  }
+
+  /** Grava mensagem enviada no cache local (aparece no chat do app). */
+  _recordOutgoing(jid, result, content) {
+    if (!result?.key?.id || !jid) return;
+    const messageId = result.key.id;
+    const key = {
+      ...result.key,
+      remoteJid: result.key.remoteJid || jid,
+      fromMe: true,
+      id: messageId,
+    };
+    const msg = {
+      key,
+      message: this._buildOutgoingMessagePayload(content),
+      messageTimestamp: Math.floor(Date.now() / 1000),
+      status: 1, // PENDING/SERVER_ACK
+    };
+    // Salva buffer em disco para poder ouvir/ver no app
+    this._cacheOutgoingMedia(messageId, jid, content);
+
+    const targets = new Set([jid, key.remoteJid, this._getPhoneJid(jid), this._jidAliases[jid]].filter(Boolean));
+    for (const t of targets) {
+      this._addMessage(t, msg);
+      if (t !== jid) this._registerAlias(jid, t);
+    }
+
+    const chatJid = this._chats[jid] ? jid : (this._chats[key.remoteJid] ? key.remoteJid : jid);
+    if (!this._chats[chatJid]) {
+      this._chats[chatJid] = {
+        jid: chatJid,
+        name: this._resolveName(chatJid) || chatJid.split("@")[0],
+        lastMessage: "",
+        unread: 0,
+        timestamp: 0,
+        pinned: 0,
+        archived: false,
+        isGroup: chatJid.endsWith("@g.us"),
+      };
+    }
+    const preview = this._extractOutgoingText(content);
+    const c = this._chats[chatJid];
+    const isAudio = !!(content && content.audio);
+    c.lastMessage = "Você: " + (isAudio ? "🎤 Áudio" : (preview || "📎 Mídia"));
+    c.timestamp = Math.floor(Date.now() / 1000);
+    c.archived = false;
+    this._saveData();
+    this._emitChatUpdate();
+  }
+
+  /**
+   * Envia presença de digitando/gravando de forma que o contato realmente veja.
+   * - resolve LID→PN
+   * - presenceSubscribe antes
+   * - envia em todos os aliases conhecidos do chat
+   */
+  async _sendChatPresence(kind, jid) {
+    if (!this.sock || !jid) return { success: false, error: "Sem socket" };
+    const targets = new Set();
+    targets.add(jid);
+    try {
+      const resolved = await this.resolveSendJid(jid);
+      if (resolved) targets.add(resolved);
+    } catch { /* ignore */ }
+    const phone = this._getPhoneJid(jid);
+    if (phone) targets.add(phone);
+    const alias = this._jidAliases[jid];
+    if (alias) targets.add(alias);
+    // Se a conversa aberta é LID e estamos com PN (ou vice-versa), inclui a chave do chat
+    for (const chatKey of Object.keys(this._chats || {})) {
+      if (chatKey === jid || this._jidAliases[chatKey] === jid || this._jidAliases[jid] === chatKey) {
+        targets.add(chatKey);
+      }
+    }
+
+    let any = false;
+    for (const t of targets) {
+      if (!t || t.endsWith("@g.us") || t.includes("@broadcast")) continue;
+      try {
+        if (typeof this.sock.presenceSubscribe === "function") {
+          await this.sock.presenceSubscribe(t).catch(() => {});
+        }
+        await this.sock.sendPresenceUpdate(kind, t);
+        any = true;
+      } catch (e) {
+        console.warn("[BAILEYS] presence", kind, t, e.message);
+      }
+    }
+    return { success: any };
   }
 
   _getCachedProfilePicture(jid) {
@@ -865,14 +1290,26 @@ class BaileysProvider extends WhatsAppProvider {
     if (!contact || !contact.id) return;
     const id = this._bareJid(contact.id);
     const existing = this._normalizeContactRecord(this._contacts[id], id);
+    const identity = resolveContactIdentity({
+      jid: id,
+      phoneJid: contact.phoneNumber || contact.pn || existing.phoneNumber || id,
+      manualName: contact.manualName || existing.manualName,
+      savedName: contact.savedName || existing.savedName,
+      verifiedName: contact.verifiedName || existing.verifiedName,
+      pushName: contact.pushName || contact.name || contact.notify || existing.name || existing.notify,
+      chatName: contact.chatName,
+      companyName: contact.companyName,
+    });
     const next = {
       ...existing,
       id,
       lid: contact.lid || existing.lid,
       phoneNumber: contact.phoneNumber || contact.pn || existing.phoneNumber,
       pn: contact.pn || contact.phoneNumber || existing.pn,
-      name: contact.name || existing.name,
-      notify: contact.notify || existing.notify,
+      name: identity.displayName,
+      nameSource: identity.source,
+      nameConfidence: identity.confidence,
+      notify: contact.notify || existing.notify || identity.displayName,
       verifiedName: contact.verifiedName || existing.verifiedName,
       imgUrl: contact.imgUrl || existing.imgUrl,
       status: contact.status || existing.status,
@@ -991,6 +1428,94 @@ class BaileysProvider extends WhatsAppProvider {
   }
 
   // ─── API ──────────────────────────────────
+  /**
+   * Lista contatos conhecidos (agenda/sincronizados) + chats individuais.
+   * Usado na montagem de campanhas manuais.
+   */
+  getContacts() {
+    const out = new Map();
+
+    const push = (entry) => {
+      if (!entry?.jid && !entry?.phone) return;
+      const isGroup = !!(entry.isGroup || String(entry.jid || "").endsWith("@g.us"));
+      const jid = entry.jid || (entry.phone ? `${String(entry.phone).replace(/\D/g, "")}@s.whatsapp.net` : "");
+      if (!jid || jid.includes("@broadcast") || jid === "status@broadcast") return;
+      const key = isGroup ? `g:${jid}` : `p:${String(entry.phone || jid.replace(/@.*$/, "")).replace(/\D/g, "")}`;
+      if (!key || key === "p:" || key === "g:") return;
+      if (out.has(key)) {
+        const prev = out.get(key);
+        if (!prev.name && entry.name) prev.name = entry.name;
+        return;
+      }
+      out.set(key, {
+        jid,
+        phone: isGroup ? jid : (entry.phone || jid.replace(/@.*$/, "").replace(/\D/g, "")),
+        name: entry.name || "",
+        isGroup,
+        source: entry.source || "contact",
+      });
+    };
+
+    // Contatos do Baileys
+    for (const [id, raw] of Object.entries(this._contacts || {})) {
+      const c = this._normalizeContactRecord(raw, id);
+      const phoneJid = this._getPhoneJid(id) || (this._isPhoneJid(id) ? id : null);
+      if (this._isLidJid(id) && !phoneJid) continue;
+      const jid = phoneJid || id;
+      if (jid.endsWith("@g.us")) {
+        push({
+          jid,
+          name: this._getContactName(jid) || c.name || c.notify || "",
+          isGroup: true,
+          source: "contact",
+        });
+        continue;
+      }
+      if (!this._isPhoneJid(jid) && !c.phoneNumber) continue;
+      const phone = (c.phoneNumber || jid).replace(/@.*$/, "").replace(/\D/g, "");
+      if (!phone || phone.length < 10) continue;
+      push({
+        jid: this._isPhoneJid(jid) ? jid : `${phone}@s.whatsapp.net`,
+        phone,
+        name: this._getContactName(jid) || c.name || c.notify || c.verifiedName || "",
+        isGroup: false,
+        source: "contact",
+      });
+    }
+
+    // Chats (pessoas e grupos com conversa)
+    for (const c of Object.values(this._chats || {})) {
+      if (!c?.jid || c.jid.includes("@broadcast")) continue;
+      if (c.isGroup || c.jid.endsWith("@g.us")) {
+        push({
+          jid: c.jid,
+          name: this._resolveName(c.jid, c) || c.name || "Grupo",
+          isGroup: true,
+          source: "chat",
+        });
+      } else {
+        const phone = this._formatPhone(c.jid).replace(/\D/g, "") || c.jid.replace(/@.*$/, "").replace(/\D/g, "");
+        if (!phone || phone.length < 10) continue;
+        push({
+          jid: c.jid,
+          phone,
+          name: this._resolveName(c.jid, c) || c.name || "",
+          isGroup: false,
+          source: "chat",
+        });
+      }
+    }
+
+    return [...out.values()].sort((a, b) => {
+      if (a.isGroup !== b.isGroup) return a.isGroup ? 1 : -1;
+      return String(a.name || a.phone).localeCompare(String(b.name || b.phone), "pt-BR");
+    });
+  }
+
+  getGroups() {
+    return this.getContacts().filter((c) => c.isGroup);
+  }
+
   getChats() {
     return Object.values(this._chats)
       .filter((c) => !c.archived)
@@ -1040,8 +1565,31 @@ class BaileysProvider extends WhatsAppProvider {
   }
 
   getMessages(jid) {
-    return (this._messages[jid] || []).sort(
-      (a, b) => (a.messageTimestamp || 0) - (b.messageTimestamp || 0),
+    if (!jid) return [];
+    const aliases = new Set(
+      [jid, this._jidAliases[jid], this._getPhoneJid(jid), this._getDisplayJid(jid)].filter(Boolean),
+    );
+    // Inclui qualquer chave de _messages que aponte para o mesmo contato
+    for (const [a, b] of Object.entries(this._jidAliases || {})) {
+      if (aliases.has(a) || aliases.has(b)) {
+        aliases.add(a);
+        aliases.add(b);
+      }
+    }
+    const seen = new Set();
+    const msgs = [];
+    for (const id of aliases) {
+      for (const m of this._messages[id] || []) {
+        const mid = m?.key?.id;
+        if (mid && seen.has(mid)) continue;
+        if (mid) seen.add(mid);
+        msgs.push(m);
+      }
+    }
+    return msgs.sort(
+      (a, b) =>
+        this._timestampToNumber(a.messageTimestamp) -
+        this._timestampToNumber(b.messageTimestamp),
     );
   }
   async loadMessages(jid, limit) {
@@ -1067,116 +1615,148 @@ class BaileysProvider extends WhatsAppProvider {
 
   async sendMessage(to, content) {
     if (!this.sock || this._status !== "connected")
-      return { success: false, error: "Not connected" };
+      return { success: false, error: "WhatsApp não conectado" };
     try {
-      const jid = this._toMessageJid(to);
+      // Mídia via sendMedia (também grava no chat)
+      if (
+        content &&
+        typeof content === "object" &&
+        (content.image || content.video || content.audio || content.document || content.sticker)
+      ) {
+        return this.sendMedia(to, content);
+      }
+
+      const text =
+        typeof content === "string" ? content : this._extractOutgoingText(content);
+      if (!String(text || "").trim() && !content?.buttons?.length) {
+        return { success: false, error: "Mensagem vazia — nada para enviar" };
+      }
+
+      const jid = await this.resolveSendJid(to);
+      if (!jid) return { success: false, error: "Destinatário inválido" };
+
       let result;
       const options = content?.quoted ? { quoted: content.quoted } : {};
       if (content?.buttons?.length) {
-        result = await this.sock.sendMessage(
-          jid,
-          {
-            text: content.header || content.text || "",
-            footer: content.footer || "",
-            buttons: content.buttons.map((b) => ({
-              buttonId: b.id || b.buttonId,
-              buttonText: { displayText: b.text || b.buttonText },
-              type: 1,
-            })),
-            headerType: 1,
-            viewOnce: false,
-          },
-          options,
-        );
-      } else if (
-        content?.image ||
-        content?.video ||
-        content?.audio ||
-        content?.document
-      ) {
-        return this.sendMedia(to, content);
-      } else {
-        const text =
-          typeof content === "string" ? content : content?.text || "";
-        result = await this.sock.sendMessage(jid, { text }, options);
-      }
-      // Add sent message to cache immediately so it shows in UI
-      if (result?.key) {
-        const msg = {
-          key: result.key,
-          message: content?.buttons?.length
-            ? { conversation: content.header || content.text || "" }
-            : content?.image
-              ? { imageMessage: {} }
-              : content?.document
-                ? { documentMessage: { fileName: content.fileName || "" } }
-                : {
-                    conversation:
-                      typeof content === "string"
-                        ? content
-                        : content?.text || "",
-                  },
-          messageTimestamp: Math.floor(Date.now() / 1000),
-        };
-        this._addMessage(jid, msg);
-        if (!this._chats[jid])
-          this._chats[jid] = {
+        // Botões legados costumam falhar no WhatsApp atual — fallback para texto
+        try {
+          result = await this.sock.sendMessage(
             jid,
-            name: jid.split("@")[0],
-            lastMessage: "",
-            unread: 0,
-            timestamp: 0,
-            pinned: 0,
-            archived: false,
-          };
-        const c = this._chats[jid];
-        c.lastMessage =
-          "Você: " +
-          (typeof content === "string"
-            ? content
-            : content?.text || content?.header || "");
-        c.timestamp = Math.floor(Date.now() / 1000);
-        this._saveData();
-        this._emitChatUpdate();
+            {
+              text: content.header || content.text || text,
+              footer: content.footer || "",
+              buttons: content.buttons.map((b) => ({
+                buttonId: b.id || b.buttonId,
+                buttonText: { displayText: b.text || b.buttonText },
+                type: 1,
+              })),
+              headerType: 1,
+              viewOnce: false,
+            },
+            options,
+          );
+        } catch (btnErr) {
+          console.warn("[BAILEYS] botões falharam, enviando texto:", btnErr.message);
+          const plain = [content.header, content.text, content.footer]
+            .filter(Boolean)
+            .join("\n");
+          result = await this.sock.sendMessage(jid, { text: plain || text }, options);
+        }
+      } else {
+        result = await this.sock.sendMessage(jid, { text: String(text) }, options);
       }
-      return { success: true, messageId: result?.key?.id };
+
+      const messageId = result?.key?.id;
+      if (!messageId) {
+        return {
+          success: false,
+          error: "WhatsApp não confirmou o envio (sem messageId). Tente de novo.",
+        };
+      }
+
+      this._recordOutgoing(jid, result, typeof content === "string" ? { text } : content || { text });
+      return { success: true, messageId, jid };
     } catch (e) {
-      return { success: false, error: e.message };
+      console.error("[BAILEYS] sendMessage error:", e.message);
+      return { success: false, error: e.message || "Falha ao enviar" };
     }
   }
 
   async sendMedia(to, content) {
-    if (!this.sock) return { success: false, error: "Not connected" };
+    if (!this.sock || this._status !== "connected")
+      return { success: false, error: "WhatsApp não conectado" };
     try {
       const p = {};
-      const jid = this._toMessageJid(to);
+      const jid = await this.resolveSendJid(to);
+      if (!jid) return { success: false, error: "Destinatário inválido" };
       if (content.text || content.caption)
         p.caption = content.text || content.caption;
       if (content.image) { p.image = content.image; if (content.mimetype) p.mimetype = content.mimetype; }
       if (content.video) { p.video = content.video; if (content.mimetype) p.mimetype = content.mimetype; }
       if (content.audio) {
-        p.audio = content.audio;
-        p.mimetype = content.mimetype || "audio/ogg";
+        const audioBuf = Buffer.isBuffer(content.audio)
+          ? content.audio
+          : Buffer.from(content.audio);
+        if (!audioBuf.length) {
+          return { success: false, error: "Áudio vazio (0 bytes) — grave de novo" };
+        }
+        p.audio = audioBuf;
+        // PTT exige ogg/opus; se vier webm, o convert no main deve ter rodado
+        let mime = content.mimetype || "audio/ogg; codecs=opus";
+        if (/webm/i.test(mime) && content.ptt !== false) {
+          // WhatsApp PTT com webm costuma sair "zerado" — avisa
+          console.warn("[BAILEYS] enviando áudio webm como PTT — preferível ogg/opus");
+        }
+        if (/ogg|opus/i.test(mime) && !/webm/i.test(mime)) {
+          mime = "audio/ogg; codecs=opus";
+        }
+        p.mimetype = mime;
         p.ptt = content.ptt !== false;
+        if (Number.isFinite(content.seconds) && content.seconds > 0) {
+          p.seconds = Math.round(content.seconds);
+        }
       }
       if (content.document) {
         p.document = content.document;
         p.fileName = content.fileName || "file";
         p.mimetype = content.mimetype || "application/octet-stream";
       }
+      if (content.sticker) {
+        p.sticker = content.sticker;
+      }
+      if (!p.image && !p.video && !p.audio && !p.document && !p.sticker) {
+        return { success: false, error: "Mídia inválida ou vazia" };
+      }
       const r = await this.sock.sendMessage(jid, p);
-      return { success: true, messageId: r?.key?.id };
+      const messageId = r?.key?.id;
+      if (!messageId) {
+        return {
+          success: false,
+          error: "WhatsApp não confirmou o envio da mídia (sem messageId).",
+        };
+      }
+      this._recordOutgoing(jid, r, content);
+      return { success: true, messageId, jid };
     } catch (e) {
-      return { success: false, error: e.message };
+      console.error("[BAILEYS] sendMedia error:", e.message);
+      return { success: false, error: e.message || "Falha ao enviar mídia" };
     }
   }
 
-  async sendAudio(to, buffer, mimetype) {
-    const type = mimetype || "audio/ogg";
+  async sendAudio(to, buffer, mimetype, seconds) {
+    // Mensagem de voz (PTT): Baileys prefere ogg/opus com ptt:true
+    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+    if (!buf.length) {
+      return { success: false, error: "Áudio vazio (0 bytes)" };
+    }
+    const type = String(mimetype || "audio/ogg; codecs=opus");
+    // Não marcar webm;codecs=opus como se fosse ogg
+    const isOgg = /ogg/i.test(type) && !/webm/i.test(type);
     return this.sendMedia(to, {
-      audio: buffer,
-      mimetype: type,
-      ptt: /audio\/(ogg|opus)/i.test(type),
+      audio: buf,
+      mimetype: isOgg ? "audio/ogg; codecs=opus" : type,
+      ptt: true,
+      seconds: Number.isFinite(seconds) ? seconds : undefined,
     });
   }
 
@@ -1226,79 +1806,143 @@ class BaileysProvider extends WhatsAppProvider {
 
   async chatAction(jid, action) {
     try {
-      if (!this._chats[jid])
+      // Resolve alias LID↔PN para achar a conversa certa
+      let chatJid = jid;
+      if (!this._chats[chatJid]) {
+        const alt =
+          this._jidAliases[jid] ||
+          this._getPhoneJid(jid) ||
+          this._knownChatJid(jid);
+        if (alt && this._chats[alt]) chatJid = alt;
+      }
+      const chat = this._chats[chatJid];
+      // typing/recording/paused não exigem chat local (presença no JID de envio)
+      const presenceOnly =
+        action === "typing" || action === "recording" || action === "paused";
+      if (!chat && !presenceOnly) {
         return { success: false, error: "Conversa não encontrada" };
-      const chat = this._chats[jid];
+      }
+      const presenceJid = jid || chatJid;
+
       if (action === "archive") {
         const next = !chat.archived;
         if (this.sock?.chatModify)
-          await this.sock.chatModify({ archive: next }, jid).catch(() => {});
+          await this.sock.chatModify({ archive: next }, chatJid).catch(() => {});
         chat.archived = next;
       } else if (action === "pin") {
         const next = chat.pinned ? 0 : Math.floor(Date.now() / 1000);
         if (this.sock?.chatModify)
-          await this.sock.chatModify({ pin: !!next }, jid).catch(() => {});
+          await this.sock.chatModify({ pin: !!next }, chatJid).catch(() => {});
         chat.pinned = next;
       } else if (action === "unread") {
         chat.unread = Math.max(chat.unread || 0, 1);
       } else if (action === "mute") {
         if (this.sock?.chatModify)
           await this.sock
-            .chatModify({ mute: 8 * 60 * 60 * 1000 }, jid)
+            .chatModify({ mute: 8 * 60 * 60 * 1000 }, chatJid)
             .catch(() => {});
       } else if (action === "typing") {
-        if (this.sock?.sendPresenceUpdate)
-          await this.sock.sendPresenceUpdate("composing", jid).catch(() => {});
+        await this._sendChatPresence("composing", presenceJid);
       } else if (action === "recording") {
-        if (this.sock?.sendPresenceUpdate)
-          await this.sock.sendPresenceUpdate("recording", jid).catch(() => {});
+        await this._sendChatPresence("recording", presenceJid);
       } else if (action === "paused") {
-        if (this.sock?.sendPresenceUpdate)
-          await this.sock.sendPresenceUpdate("paused", jid).catch(() => {});
+        await this._sendChatPresence("paused", presenceJid);
       } else if (action === "block") {
-        if (this.sock?.updateBlockStatus && !jid.endsWith("@g.us"))
-          await this.sock.updateBlockStatus(jid, "block").catch(() => {});
+        if (this.sock?.updateBlockStatus && !chatJid.endsWith("@g.us"))
+          await this.sock.updateBlockStatus(chatJid, "block").catch(() => {});
       } else if (action === "clear") {
-        this._messages[jid] = [];
-        this._msgIndex[jid] = new Set();
+        this._messages[chatJid] = [];
+        this._msgIndex[chatJid] = new Set();
         chat.lastMessage = "";
         chat.unread = 0;
       } else if (action === "delete") {
-        delete this._chats[jid];
-        delete this._messages[jid];
-        delete this._msgIndex[jid];
+        delete this._chats[chatJid];
+        delete this._messages[chatJid];
+        delete this._msgIndex[chatJid];
       } else {
         return { success: false, error: "Ação inválida" };
       }
-      this._saveDataNow();
-      this._emitChatUpdate();
+      if (chat) {
+        this._saveDataNow();
+        this._emitChatUpdate();
+      }
       return { success: true };
     } catch (e) {
       return { success: false, error: e.message };
     }
   }
 
-  async deleteMessage(jid, key) {
-    if (!this.sock || this._status !== "connected")
-      return { success: false, error: "Not connected" };
-    try {
-      await this.sock.sendMessage(jid, { delete: key });
-
-      // Update cache
-      if (this._messages[jid]) {
-        this._messages[jid] = this._messages[jid].filter(
-          (m) => m.key.id !== key.id,
-        );
-        this._saveData();
+  /**
+   * Apaga mensagem.
+   * forEveryone=true: tenta apagar para todos (só próprias, janela do WA).
+   * forEveryone=false: remove só do histórico local do Sigma.
+   */
+  async deleteMessage(jid, key, { forEveryone = true } = {}) {
+    if (!key?.id) return { success: false, error: "Mensagem inválida" };
+    const removeLocal = (storeJid) => {
+      if (!storeJid || !this._messages[storeJid]) return;
+      const before = this._messages[storeJid].length;
+      this._messages[storeJid] = this._messages[storeJid].filter(
+        (m) => m.key?.id !== key.id,
+      );
+      if (this._msgIndex[storeJid]) this._msgIndex[storeJid].delete(key.id);
+      if (this._messages[storeJid].length !== before) {
+        const last = this._messages[storeJid][this._messages[storeJid].length - 1];
+        if (this._chats[storeJid]) {
+          this._chats[storeJid].lastMessage = last
+            ? (last.key?.fromMe ? "Você: " : "") + (this._getMessageText(last) || "…")
+            : "";
+        }
       }
-      return { success: true };
+    };
+
+    try {
+      if (forEveryone) {
+        if (!this.sock || this._status !== "connected") {
+          return { success: false, error: "WhatsApp não conectado" };
+        }
+        const delKey = {
+          remoteJid: key.remoteJid || jid,
+          fromMe: key.fromMe !== false,
+          id: key.id,
+          participant: key.participant,
+        };
+        await this.sock.sendMessage(jid, { delete: delKey });
+      }
+
+      // Limpa em todos os aliases (LID/PN)
+      const targets = new Set(
+        [jid, key.remoteJid, this._getPhoneJid(jid), this._jidAliases[jid]].filter(Boolean),
+      );
+      for (const t of targets) removeLocal(t);
+      // busca residual
+      for (const t of Object.keys(this._messages || {})) {
+        if ((this._messages[t] || []).some((m) => m.key?.id === key.id)) removeLocal(t);
+      }
+      this._outgoingMediaById?.delete(key.id);
+      this._saveData();
+      this._emitChatUpdate();
+      return { success: true, forEveryone: !!forEveryone };
     } catch (e) {
+      // Se "para todos" falhar (ex.: tempo esgotado), ainda oferece limpar local
+      if (forEveryone) {
+        try {
+          const targets = new Set([jid, key.remoteJid].filter(Boolean));
+          for (const t of targets) removeLocal(t);
+          this._saveData();
+          this._emitChatUpdate();
+        } catch { /* ignore */ }
+      }
       return { success: false, error: e.message };
     }
   }
 
   getStatus() {
     return this._status;
+  }
+  /** Pronto para enviar (campanhas / chat) */
+  isReady() {
+    return this._status === "connected" && !!this.sock;
   }
   getPhoneNumber() {
     return this._phoneNumber;
@@ -1427,14 +2071,199 @@ class BaileysProvider extends WhatsAppProvider {
     }
   }
 
+  getMediaCacheRoot() {
+    return this._mediaCacheRoot;
+  }
+
+  getStickerCacheRoot() {
+    return this._stickerCacheRoot;
+  }
+
+  _unwrapMessageContent(message) {
+    if (!message || typeof message !== "object") return message || {};
+    const inner =
+      message.ephemeralMessage?.message ||
+      message.viewOnceMessage?.message ||
+      message.viewOnceMessageV2?.message ||
+      message.viewOnceMessageV2Extension?.message ||
+      message.documentWithCaptionMessage?.message ||
+      message.editedMessage?.message ||
+      null;
+    return inner ? this._unwrapMessageContent(inner) : message;
+  }
+
+  _getMessageMediaMeta(msg) {
+    const mc = this._unwrapMessageContent(msg?.message || {});
+    if (mc.imageMessage) {
+      return {
+        kind: "image",
+        mimetype: mc.imageMessage.mimetype || "image/jpeg",
+        fileName: null,
+      };
+    }
+    if (mc.videoMessage) {
+      return {
+        kind: "video",
+        mimetype: mc.videoMessage.mimetype || "video/mp4",
+        fileName: null,
+      };
+    }
+    if (mc.audioMessage) {
+      return {
+        kind: "audio",
+        mimetype: mc.audioMessage.mimetype || "audio/ogg",
+        fileName: null,
+      };
+    }
+    if (mc.documentMessage) {
+      return {
+        kind: "document",
+        mimetype: mc.documentMessage.mimetype || "application/octet-stream",
+        fileName: mc.documentMessage.fileName || null,
+      };
+    }
+    if (mc.stickerMessage) {
+      return {
+        kind: "sticker",
+        mimetype: mc.stickerMessage.mimetype || "image/webp",
+        fileName: null,
+      };
+    }
+    return null;
+  }
+
+  _readCachedMedia(jid, messageId, mimetype) {
+    try {
+      const filePath = this._getMediaCachePath(jid, messageId, mimetype);
+      if (!fs.existsSync(filePath)) return null;
+      const buffer = fs.readFileSync(filePath);
+      return {
+        success: true,
+        data: buffer.toString("base64"),
+        mimetype,
+        filePath,
+        cached: true,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _findMessageAnywhere(jid, messageId) {
+    const tryJids = [
+      jid,
+      this._getPhoneJid(jid),
+      this._jidAliases[jid],
+      this._getDisplayJid(jid),
+    ].filter(Boolean);
+    for (const j of tryJids) {
+      const list = this._messages[j] || [];
+      const hit = list.find((m) => m.key?.id === messageId);
+      if (hit) return { msg: hit, jid: j };
+    }
+    // Busca global por id (enviamos em PN, UI pede no LID, etc.)
+    for (const [j, list] of Object.entries(this._messages || {})) {
+      const hit = (list || []).find((m) => m.key?.id === messageId);
+      if (hit) return { msg: hit, jid: j };
+    }
+    return null;
+  }
+
   async downloadMedia(jid, messageId) {
     try {
+      // 1) Cache de mídia que NÓS enviamos (sempre disponível localmente)
+      const outgoing = this._outgoingMediaById?.get(messageId);
+      if (outgoing?.filePath && fs.existsSync(outgoing.filePath)) {
+        const buffer = fs.readFileSync(outgoing.filePath);
+        return {
+          success: true,
+          data: buffer.toString("base64"),
+          mimetype: outgoing.mimetype || "application/octet-stream",
+          filePath: outgoing.filePath,
+          fileName: outgoing.fileName || null,
+          kind: outgoing.kind || null,
+          cached: true,
+        };
+      }
+
+      // 2) Mensagem no histórico (incluindo aliases LID/PN)
+      const found = this._findMessageAnywhere(jid, messageId);
+      if (!found?.msg) {
+        // Ainda tenta arquivo em cache por jid informado
+        for (const mimeGuess of ["audio/ogg", "audio/ogg; codecs=opus", "image/jpeg", "video/mp4", "image/webp"]) {
+          const guess = this._getMediaCachePath(jid, messageId, mimeGuess);
+          if (fs.existsSync(guess)) {
+            const buffer = fs.readFileSync(guess);
+            return {
+              success: true,
+              data: buffer.toString("base64"),
+              mimetype: mimeGuess,
+              filePath: guess,
+              cached: true,
+            };
+          }
+        }
+        return { success: false, error: "Message not found" };
+      }
+      const { msg, jid: storeJid } = found;
+
+      const meta = this._getMessageMediaMeta(msg);
+      if (!meta) {
+        // Sem meta no payload sintético, mas pode ter arquivo no cache
+        for (const mimeGuess of ["audio/ogg", "audio/ogg; codecs=opus", "audio/webm"]) {
+          const guess = this._getMediaCachePath(storeJid, messageId, mimeGuess);
+          if (fs.existsSync(guess)) {
+            const buffer = fs.readFileSync(guess);
+            return {
+              success: true,
+              data: buffer.toString("base64"),
+              mimetype: mimeGuess,
+              filePath: guess,
+              kind: "audio",
+              cached: true,
+            };
+          }
+        }
+        return { success: false, error: "Message has no media" };
+      }
+
+      const cached = this._readCachedMedia(storeJid, messageId, meta.mimetype);
+      if (cached) return cached;
+      // tenta no jid da UI também
+      const cached2 = this._readCachedMedia(jid, messageId, meta.mimetype);
+      if (cached2) return cached2;
+
+      // Stickers often live under a different extension already cached by saveStickerMedia
+      if (meta.kind === "sticker") {
+        const stickerGuess = this._getMediaCachePath(storeJid, messageId, "image/webp");
+        if (fs.existsSync(stickerGuess)) {
+          const buffer = fs.readFileSync(stickerGuess);
+          return {
+            success: true,
+            data: buffer.toString("base64"),
+            mimetype: "image/webp",
+            filePath: stickerGuess,
+            cached: true,
+          };
+        }
+      }
+
+      // Mensagem sintética (sem mediaKey) não baixa da rede — precisa do cache local
+      if (!this._messageHasDownloadableMedia(msg)) {
+        return {
+          success: false,
+          error: "Mídia local não encontrada (reabra o app após reenviar)",
+        };
+      }
+
       const { downloadMediaMessage } = require("@whiskeysockets/baileys");
-      const msgs = this._messages[jid] || [];
-      const msg = msgs.find((m) => m.key?.id === messageId);
-      if (!msg) return { success: false, error: "Message not found" };
+      const unwrappedContent = this._unwrapMessageContent(msg.message || {});
+      const downloadMsg =
+        unwrappedContent && unwrappedContent !== msg.message
+          ? { ...msg, message: unwrappedContent }
+          : msg;
       const buffer = await downloadMediaMessage(
-        msg,
+        downloadMsg,
         "buffer",
         {},
         {
@@ -1443,21 +2272,20 @@ class BaileysProvider extends WhatsAppProvider {
         },
       );
       const base64 = buffer.toString("base64");
-      const mc = msg.message;
-      let mimetype = "application/octet-stream";
-      if (mc?.imageMessage) mimetype = mc.imageMessage.mimetype || "image/jpeg";
-      else if (mc?.audioMessage)
-        mimetype = mc.audioMessage.mimetype || "audio/ogg";
-      else if (mc?.videoMessage)
-        mimetype = mc.videoMessage.mimetype || "video/mp4";
-      else if (mc?.documentMessage)
-        mimetype = mc.documentMessage.mimetype || "application/octet-stream";
-      const filePath = this._getMediaCachePath(jid, messageId, mimetype);
+      const mimetype = meta.mimetype || "application/octet-stream";
+      const filePath = this._getMediaCachePath(storeJid, messageId, mimetype);
       try {
         this._ensureDir(path.dirname(filePath));
         fs.writeFileSync(filePath, buffer);
       } catch (e) {}
-      return { success: true, data: base64, mimetype, filePath };
+      return {
+        success: true,
+        data: base64,
+        mimetype,
+        filePath,
+        fileName: meta.fileName || null,
+        kind: meta.kind,
+      };
     } catch (e) {
       return { success: false, error: e.message };
     }

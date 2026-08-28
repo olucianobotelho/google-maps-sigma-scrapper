@@ -1,4 +1,6 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webFrame } = require("electron");
+
+webFrame.setZoomFactor(0.7);
 
 contextBridge.exposeInMainWorld("electronAPI", {
   startScrape: (query, maxResults, queryId) =>
@@ -8,28 +10,53 @@ contextBridge.exposeInMainWorld("electronAPI", {
   exportLeads: (leads, format) =>
     ipcRenderer.invoke("export-leads", { leads, format }),
   deleteTempFiles: () => ipcRenderer.invoke("delete-temp-files"),
-  onProgress: (callback) =>
-    ipcRenderer.on("progress", (_, msg) => callback(msg)),
+  onProgress: (callback) => {
+    const listener = (_, msg) => callback(msg);
+    ipcRenderer.on("progress", listener);
+    return () => ipcRenderer.removeListener("progress", listener);
+  },
   winMinimize: () => ipcRenderer.invoke("win-minimize"),
   winMaximize: () => ipcRenderer.invoke("win-maximize"),
   winClose: () => ipcRenderer.invoke("win-close"),
   winIsMaximized: () => ipcRenderer.invoke("win-is-maximized"),
+  reloadUI: () => ipcRenderer.invoke("reload-ui"),
+  getTheme: () => ipcRenderer.invoke("theme-get"),
+  setTheme: (theme) => ipcRenderer.invoke("theme-set", { theme }),
   onWinState: (callback) =>
     ipcRenderer.on("win-state", (_, state) => callback(state)),
+  openExternal: (url) => ipcRenderer.invoke("open-external", { url }),
+  checkUpdate: () => ipcRenderer.invoke("update-check"),
+  downloadUpdate: () => ipcRenderer.invoke("update-download"),
+  installUpdate: () => ipcRenderer.invoke("update-install"),
+  getUpdateStatus: () => ipcRenderer.invoke("update-status"),
+  onUpdateStatus: (callback) => {
+    const listener = (_, data) => callback(data);
+    ipcRenderer.on("update-status", listener);
+    return () => ipcRenderer.removeListener("update-status", listener);
+  },
+  getMetrics: () => ipcRenderer.invoke("metrics-get"),
+  trackMetric: (event, data) => ipcRenderer.invoke("metrics-track", { event, data }),
+  getMetricsSettings: () => ipcRenderer.invoke("metrics-settings-get"),
+  setMetricsSettings: (patch) => ipcRenderer.invoke("metrics-settings-set", patch),
 });
 
 contextBridge.exposeInMainWorld("whatsappAPI", {
   connect: (provider, config) =>
     ipcRenderer.invoke("whatsapp-connect", { provider, config }),
-  disconnect: () => ipcRenderer.invoke("whatsapp-disconnect"),
+  disconnect: (connectionId) =>
+    ipcRenderer.invoke("whatsapp-disconnect", { connectionId }),
   removeConnection: (connectionId) => ipcRenderer.invoke("whatsapp-remove-connection", { connectionId }),
   getStatus: () => ipcRenderer.invoke("whatsapp-status"),
   listConnections: () => ipcRenderer.invoke("whatsapp-list-connections"),
   switchConnection: (connectionId) =>
     ipcRenderer.invoke("whatsapp-switch-connection", { connectionId }),
-  forceResync: () => ipcRenderer.invoke("whatsapp-force-resync"),
-  onStatus: (callback) =>
-    ipcRenderer.on("whatsapp-status-changed", (_, data) => callback(data)),
+  forceResync: (connectionId) =>
+    ipcRenderer.invoke("whatsapp-force-resync", { connectionId }),
+  onStatus: (callback) => {
+    const listener = (_, data) => callback(data);
+    ipcRenderer.on("whatsapp-status-changed", listener);
+    return () => ipcRenderer.removeListener("whatsapp-status-changed", listener);
+  },
 });
 
 contextBridge.exposeInMainWorld("campaignAPI", {
@@ -37,10 +64,13 @@ contextBridge.exposeInMainWorld("campaignAPI", {
   update: (id, updates) =>
     ipcRenderer.invoke("campaign-update", { id, updates }),
   delete: (id) => ipcRenderer.invoke("campaign-delete", { id }),
-  start: (id) => ipcRenderer.invoke("campaign-start", { id }),
+  start: (id, connectionId) =>
+    ipcRenderer.invoke("campaign-start", { id, connectionId }),
   pause: (id) => ipcRenderer.invoke("campaign-pause", { id }),
-  resume: (id) => ipcRenderer.invoke("campaign-resume", { id }),
-  retryFailed: (id) => ipcRenderer.invoke("campaign-retry-failed", { id }),
+  resume: (id, connectionId) =>
+    ipcRenderer.invoke("campaign-resume", { id, connectionId }),
+  retryFailed: (id, connectionId) =>
+    ipcRenderer.invoke("campaign-retry-failed", { id, connectionId }),
   getAll: () => ipcRenderer.invoke("campaign-get-all"),
   get: (id) => ipcRenderer.invoke("campaign-get", { id }),
   export: (id, format) => ipcRenderer.invoke("campaign-export", { id, format }),
@@ -48,46 +78,116 @@ contextBridge.exposeInMainWorld("campaignAPI", {
     ipcRenderer.invoke("template-preview", { template, leadId }),
   normalize: (phone, cc) =>
     ipcRenderer.invoke("phone-normalize", { phone, countryCode: cc }),
-  onProgress: (callback) =>
-    ipcRenderer.on("campaign-progress", (_, data) => callback(data)),
+  onProgress: (callback) => {
+    const listener = (_, data) => callback(data);
+    ipcRenderer.on("campaign-progress", listener);
+    return () => ipcRenderer.removeListener("campaign-progress", listener);
+  },
+});
+
+contextBridge.exposeInMainWorld("leadScoringAPI", {
+  analyzeLead: (lead, options) =>
+    ipcRenderer.invoke("lead-scoring-analyze-lead", { lead, options }),
+  analyzeBatch: (leads, options) =>
+    ipcRenderer.invoke("lead-scoring-analyze-batch", { leads, options }),
+  cancel: (jobId) => ipcRenderer.invoke("lead-scoring-cancel", { jobId }),
+  clearAnalyses: (opts) => ipcRenderer.invoke("lead-scoring-clear", opts || {}),
+  getAll: (filters) => ipcRenderer.invoke("lead-scoring-get-all", { filters }),
+  getLead: (id) => ipcRenderer.invoke("lead-scoring-get-lead", { id }),
+  updateOutcome: (id, outcome) =>
+    ipcRenderer.invoke("lead-scoring-update-outcome", { id, outcome }),
+  export: (filters, format) =>
+    ipcRenderer.invoke("lead-scoring-export", { filters, format }),
+  getSettings: () => ipcRenderer.invoke("lead-scoring-get-settings"),
+  updateSettings: (patch) =>
+    ipcRenderer.invoke("lead-scoring-update-settings", { patch }),
+  openScreenshot: (filePath) =>
+    ipcRenderer.invoke("lead-scoring-open-screenshot", { filePath }),
+  createCampaign: (ids, name, connectionId) =>
+    ipcRenderer.invoke("lead-scoring-create-campaign", { ids, name, connectionId }),
+  listGroups: () => ipcRenderer.invoke("lead-scoring-list-groups"),
+  createGroup: (data) => ipcRenderer.invoke("lead-scoring-create-group", data || {}),
+  updateGroup: (id, patch) => ipcRenderer.invoke("lead-scoring-update-group", { id, patch }),
+  deleteGroup: (id, opts) => ipcRenderer.invoke("lead-scoring-delete-group", { id, ...(opts || {}) }),
+  addToGroup: (groupId, leadIds) =>
+    ipcRenderer.invoke("lead-scoring-add-to-group", { groupId, leadIds }),
+  removeFromGroup: (groupId, leadIds) =>
+    ipcRenderer.invoke("lead-scoring-remove-from-group", { groupId, leadIds }),
+  createGroupFromFilters: (name, filters, opts) =>
+    ipcRenderer.invoke("lead-scoring-create-group-from-filters", {
+      name,
+      filters,
+      ...(opts || {}),
+    }),
+  onProgress: (callback) => {
+    const listener = (_, data) => callback(data);
+    ipcRenderer.on("lead-scoring-progress", listener);
+    return () => ipcRenderer.removeListener("lead-scoring-progress", listener);
+  },
 });
 
 contextBridge.exposeInMainWorld("chatAPI", {
-  getChats: () => ipcRenderer.invoke("whatsapp-get-chats"),
-  getArchivedChats: () => ipcRenderer.invoke("whatsapp-get-archived-chats"),
+  getChats: (connectionId) =>
+    ipcRenderer.invoke("whatsapp-get-chats", { connectionId }),
+  getContacts: (connectionId) =>
+    ipcRenderer.invoke("whatsapp-get-contacts", { connectionId }),
+  getArchivedChats: (connectionId) =>
+    ipcRenderer.invoke("whatsapp-get-archived-chats", { connectionId }),
   getSettings: () => ipcRenderer.invoke("whatsapp-get-settings"),
   updateSettings: (patch) =>
     ipcRenderer.invoke("whatsapp-update-settings", { patch }),
   startChat: (phone, name) =>
     ipcRenderer.invoke("whatsapp-start-chat", { phone, name }),
-  getMessages: (jid) => ipcRenderer.invoke("whatsapp-get-messages", { jid }),
-  getProfilePic: (jid) =>
-    ipcRenderer.invoke("whatsapp-get-profile-pic", { jid }),
-  getGroupMetadata: (jid) =>
-    ipcRenderer.invoke("whatsapp-get-group-metadata", { jid }),
-  getContactInfo: (jid) =>
-    ipcRenderer.invoke("whatsapp-get-contact-info", { jid }),
-  loadMessages: (jid, limit) =>
-    ipcRenderer.invoke("whatsapp-load-messages", { jid, limit }),
-  markRead: (jid) => ipcRenderer.invoke("whatsapp-mark-read", { jid }),
-  chatAction: (jid, action) =>
-    ipcRenderer.invoke("whatsapp-chat-action", { jid, action }),
-  sendMessage: (to, content) =>
-    ipcRenderer.invoke("whatsapp-send-message", { to, content }),
-  deleteMessage: (jid, key) =>
-    ipcRenderer.invoke("whatsapp-delete-message", { jid, key }),
-  sendMedia: (to, filePath, caption) =>
-    ipcRenderer.invoke("whatsapp-send-media", { to, filePath, caption }),
-  sendAudio: (to, audioData, mimetype) =>
-    ipcRenderer.invoke("whatsapp-send-audio", { to, audioData, mimetype }),
-  sendSticker: (to, filePath) =>
-    ipcRenderer.invoke("whatsapp-send-sticker", { to, filePath }),
-  reactMessage: (jid, key, emoji) =>
-    ipcRenderer.invoke("whatsapp-react-message", { jid, key, emoji }),
-  forwardMessage: (fromJid, messageId, toJid) =>
-    ipcRenderer.invoke("whatsapp-forward-message", { fromJid, messageId, toJid }),
-  downloadMedia: (jid, messageId) =>
-    ipcRenderer.invoke("whatsapp-download-media", { jid, messageId }),
+  getMessages: (jid, connectionId) =>
+    ipcRenderer.invoke("whatsapp-get-messages", { jid, connectionId }),
+  getProfilePic: (jid, connectionId) =>
+    ipcRenderer.invoke("whatsapp-get-profile-pic", { jid, connectionId }),
+  getGroupMetadata: (jid, connectionId) =>
+    ipcRenderer.invoke("whatsapp-get-group-metadata", { jid, connectionId }),
+  getContactInfo: (jid, connectionId) =>
+    ipcRenderer.invoke("whatsapp-get-contact-info", { jid, connectionId }),
+  loadMessages: (jid, limit, connectionId) =>
+    ipcRenderer.invoke("whatsapp-load-messages", { jid, limit, connectionId }),
+  markRead: (jid, connectionId) =>
+    ipcRenderer.invoke("whatsapp-mark-read", { jid, connectionId }),
+  chatAction: (jid, action, connectionId) =>
+    ipcRenderer.invoke("whatsapp-chat-action", { jid, action, connectionId }),
+  sendMessage: (to, content, connectionId) =>
+    ipcRenderer.invoke("whatsapp-send-message", { to, content, connectionId }),
+  deleteMessage: (jid, key, connectionId, forEveryone = true) =>
+    ipcRenderer.invoke("whatsapp-delete-message", {
+      jid,
+      key,
+      connectionId,
+      forEveryone,
+    }),
+  getLabels: () => ipcRenderer.invoke("whatsapp-labels-get"),
+  saveLabelCatalog: (catalog) =>
+    ipcRenderer.invoke("whatsapp-labels-save-catalog", { catalog }),
+  setContactLabels: (jid, tagIds) =>
+    ipcRenderer.invoke("whatsapp-labels-set-contact", { jid, tagIds }),
+  sendMedia: (to, filePath, caption, connectionId) =>
+    ipcRenderer.invoke("whatsapp-send-media", { to, filePath, caption, connectionId }),
+  sendAudio: (to, audioData, mimetype, connectionId) =>
+    ipcRenderer.invoke("whatsapp-send-audio", { to, audioData, mimetype, connectionId }),
+  saveTriggerAudio: (payload) =>
+    ipcRenderer.invoke("whatsapp-save-trigger-audio", payload || {}),
+  deleteTriggerAudio: (filePath) =>
+    ipcRenderer.invoke("whatsapp-delete-trigger-audio", { filePath }),
+  readTriggerAudio: (filePath) =>
+    ipcRenderer.invoke("whatsapp-read-trigger-audio", { filePath }),
+  sendTriggerAudio: (to, filePath, connectionId) =>
+    ipcRenderer.invoke("whatsapp-send-trigger-audio", { to, filePath, connectionId }),
+  sendSticker: (to, filePath, connectionId) =>
+    ipcRenderer.invoke("whatsapp-send-sticker", { to, filePath, connectionId }),
+  reactMessage: (jid, key, emoji, connectionId) =>
+    ipcRenderer.invoke("whatsapp-react-message", { jid, key, emoji, connectionId }),
+  forwardMessage: (fromJid, messageId, toJid, connectionId) =>
+    ipcRenderer.invoke("whatsapp-forward-message", { fromJid, messageId, toJid, connectionId }),
+  downloadMedia: (jid, messageId, connectionId) =>
+    ipcRenderer.invoke("whatsapp-download-media", { jid, messageId, connectionId }),
+  openMedia: (filePath) =>
+    ipcRenderer.invoke("whatsapp-open-media", { filePath }),
   getLinkPreview: (url) =>
     ipcRenderer.invoke("whatsapp-get-link-preview", { url }),
   saveSticker: (jid, messageId, name) =>
@@ -96,10 +196,19 @@ contextBridge.exposeInMainWorld("chatAPI", {
   sendSavedSticker: (to, stickerId) =>
     ipcRenderer.invoke("whatsapp-send-saved-sticker", { to, stickerId }),
   openFile: (filters) => ipcRenderer.invoke("dialog-open-file", { filters }),
-  onMessage: (callback) =>
-    ipcRenderer.on("whatsapp-message-received", (_, data) => callback(data)),
-  onChatUpdate: (callback) =>
-    ipcRenderer.on("whatsapp-chat-update", () => callback()),
-  onSync: (callback) =>
-    ipcRenderer.on("whatsapp-sync", (_, data) => callback(data)),
+  onMessage: (callback) => {
+    const listener = (_, data) => callback(data);
+    ipcRenderer.on("whatsapp-message-received", listener);
+    return () => ipcRenderer.removeListener("whatsapp-message-received", listener);
+  },
+  onChatUpdate: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("whatsapp-chat-update", listener);
+    return () => ipcRenderer.removeListener("whatsapp-chat-update", listener);
+  },
+  onSync: (callback) => {
+    const listener = (_, data) => callback(data);
+    ipcRenderer.on("whatsapp-sync", listener);
+    return () => ipcRenderer.removeListener("whatsapp-sync", listener);
+  },
 });
