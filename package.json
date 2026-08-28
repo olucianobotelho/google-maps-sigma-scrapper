@@ -61,8 +61,18 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/icon.ico"
     },
@@ -72,7 +82,11 @@
       "createDesktopShortcut": true
     },
     "publish": [
-      { "provider": "github", "owner": "olucianobotelho", "repo": "google-maps-sigma-scrapper" }
+      {
+        "provider": "github",
+        "owner": "olucianobotelho",
+        "repo": "google-maps-sigma-scrapper"
+      }
     ],
     "linux": {
       "target": [
@@ -84,5 +98,8 @@
     },
     "asar": true,
     "compression": "maximum"
+  },
+  "overrides": {
+    "js-yaml": "4.3.1"
   }
 }
