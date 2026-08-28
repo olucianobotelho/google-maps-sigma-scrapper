@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Heart, X } from 'lucide-react';
-import pixQr from '../assets/pix-apoie.png';
 
 export default function DonationTrigger() {
   const [visible, setVisible] = useState(true);
@@ -30,9 +29,8 @@ export default function DonationTrigger() {
       <button type="button" className="donation-close" onClick={() => setVisible(false)} aria-label="Fechar aviso">
         <X size={13} />
       </button>
-      <div className="donation-title"><Heart size={13} fill="currentColor" /> Apoie este projeto 👍</div>
-      <img className="donation-qr" src={pixQr} alt="QR Code para apoiar o projeto via Pix" />
-      <div className="donation-hint">Aponte a câmera do banco</div>
+      <div className="donation-title"><Heart size={13} fill="currentColor" /> Curtiu? Deixa uma ⭐ no GitHub</div>
+      <div className="donation-hint">Compartilhe com quem precisa de leads</div>
     </aside>
   );
 }
