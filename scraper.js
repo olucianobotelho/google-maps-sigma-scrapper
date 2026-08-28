@@ -90,31 +90,42 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
       try {
         checkCancelled(cancelToken);
         await listings[i].click();
-        await page.waitForTimeout(600);
+        try { await page.waitForSelector('h1.DUwDvf', { timeout: 3000 }); } catch {}
+        await page.waitForTimeout(500);
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const hasPoi = await page.evaluate(() => document.documentElement.innerHTML.includes('!3d-') || document.documentElement.innerHTML.includes('!3d')).catch(() => false);
+          if (hasPoi) break;
+          await page.waitForTimeout(400);
+        }
         checkCancelled(cancelToken);
 
-        const place = await extractBusinessData(page);
+        let place = await extractBusinessData(page);
+        if (!place.latitude || place.coordSource === 'none') {
+          await page.waitForTimeout(700);
+          const retry = await extractBusinessData(page);
+          if (retry.latitude && retry.coordSource !== 'none') place = retry;
+        }
 
         if (place.name) {
           const lat = parseFloat(place.latitude);
           const lng = parseFloat(place.longitude);
-          const hasPreciseCoord = isValidCoord(lat, lng) && place.coordSource !== 'viewport';
+          const hasPreciseCoord = isValidCoord(lat, lng) && (place.coordSource === 'poi' || place.coordSource === 'meta');
           const needsGeocode = !hasPreciseCoord && place.address && place.address.length > 5;
           if (needsGeocode) {
             try {
               checkCancelled(cancelToken);
               const geo = await geocodeAddress(place.address, searchQuery);
               if (geo && isValidCoord(geo.lat, geo.lng)) {
-                // Só sobrescreve se não tinha coord ou se era viewport (imprecisa)
-                const shouldOverwrite = !isValidCoord(lat, lng) || place.coordSource === 'viewport';
-                if (shouldOverwrite) {
-                  place.latitude = geo.lat;
-                  place.longitude = geo.lng;
-                  place.geocodeConfidence = geo.confidence;
-                  place.geocodeSource = geo.source;
-                  place.geocodeDisplayName = geo.displayName;
-                  place.coordSource = 'nominatim';
-                }
+                place.latitude = geo.lat;
+                place.longitude = geo.lng;
+                place.geocodeConfidence = geo.confidence;
+                place.geocodeSource = geo.source;
+                place.geocodeDisplayName = geo.displayName;
+                place.coordSource = 'nominatim';
+              } else if (!isValidCoord(lat, lng)) {
+                place.coordSource = 'none';
+                place.latitude = '';
+                place.longitude = '';
               }
             } catch {}
           }

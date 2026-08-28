@@ -410,38 +410,42 @@ export default function MapScraperView({
     const bounds = [];
     const leadsToRender = visibleLeads.slice(0, 80);
 
+    const skippedCount = { current: 0 };
     leadsToRender.forEach((lead, i) => {
       const leadKey = lead.id || i;
-      const baseCoords = resolveLeadLocation(lead.address, activeQueryLabel);
 
       const rawLat = parseFloat(lead.latitude ?? lead.lat ?? lead.geocodeLat ?? '');
       const rawLng = parseFloat(lead.longitude ?? lead.lng ?? lead.geocodeLng ?? '');
       const hasRealCoords = Number.isFinite(rawLat) && Number.isFinite(rawLng) && Math.abs(rawLat) > 0.1 && Math.abs(rawLng) > 0.1;
+      const isPrecise = hasRealCoords && (lead.coordSource === 'poi' || lead.coordSource === 'meta');
+      const isGeocoded = hasRealCoords && lead.coordSource === 'nominatim';
+      const isViewportJunk = hasRealCoords && lead.coordSource === 'viewport';
+      const shouldShow = hasRealCoords && (isPrecise || isGeocoded) && !isViewportJunk;
       const geoLat = parseFloat(lead.geocodeLat ?? lead.geocode?.lat ?? '');
       const geoLng = parseFloat(lead.geocodeLng ?? lead.geocode?.lng ?? '');
-      const hasGeoCoords = !hasRealCoords && Number.isFinite(geoLat) && Number.isFinite(geoLng) && Math.abs(geoLat) > 0.1;
+      const hasGeoCoords = !shouldShow && Number.isFinite(geoLat) && Number.isFinite(geoLng) && Math.abs(geoLat) > 0.1;
 
       let lat, lng;
-      let coordSource = 'fallback';
-      let coordConfidence = 'fallback';
-      if (hasRealCoords) {
+      let coordSource = 'sem-coord';
+      let coordConfidence = 'none';
+      if (shouldShow) {
         lat = rawLat;
         lng = rawLng;
-        coordSource = lead.geocodeSource || 'url';
+        coordSource = lead.coordSource || 'poi';
         coordConfidence = lead.geocodeConfidence || 'exact';
       } else if (hasGeoCoords) {
         lat = geoLat;
         lng = geoLng;
         coordSource = 'nominatim';
         coordConfidence = lead.geocodeConfidence || 'approximate';
+      } else if (hasRealCoords && !isViewportJunk) {
+        lat = rawLat;
+        lng = rawLng;
+        coordSource = lead.coordSource || 'url';
+        coordConfidence = lead.geocodeConfidence || 'approximate';
       } else {
-        let hash = 0;
-        const str = (lead.name || '') + (lead.address || '') + (lead.placeId || '');
-        for (let j = 0; j < str.length; j++) { hash = ((hash << 5) - hash) + str.charCodeAt(j); hash |= 0; }
-        const ang = ((hash >>> 0) % 360) * Math.PI / 180;
-        const rad = (((hash >>> 8) % 1000) / 1000) * 0.0022;
-        lat = baseCoords[0] + Math.cos(ang) * rad;
-        lng = baseCoords[1] + Math.sin(ang) * rad;
+        skippedCount.current += 1;
+        return;
       }
 
       const hasEmail = Boolean(lead.email);
@@ -449,9 +453,9 @@ export default function MapScraperView({
         icon: createPinIcon(hasEmail, false)
       });
 
-      const isPrecise = coordSource === 'poi' || coordSource === 'meta' || coordConfidence === 'exact';
-      const confidenceBadge = isPrecise ? '✓ exato' : coordConfidence === 'approximate' ? '~ aproximado' : coordSource === 'nominatim' ? '~ geocodificado' : '? bairro';
-      const confidenceColor = isPrecise ? '#059669' : coordSource === 'nominatim' ? '#0EA5E9' : coordConfidence === 'approximate' ? '#D97706' : '#94A3B8';
+      const precise = coordSource === 'poi' || coordSource === 'meta' || coordConfidence === 'exact';
+      const confidenceBadge = precise ? '✓ exato' : coordConfidence === 'approximate' ? '~ aproximado' : coordSource === 'nominatim' ? '~ geocodificado' : '? bairro';
+      const confidenceColor = precise ? '#059669' : coordSource === 'nominatim' ? '#0EA5E9' : coordConfidence === 'approximate' ? '#D97706' : '#94A3B8';
       marker.bindPopup(`
         <div style="font-family: system-ui, -apple-system, sans-serif; min-width: 200px; padding: 4px;">
           <h4 style="margin: 0 0 4px; font-size: 13px; font-weight: 700; color: #0F172A;">${lead.name || 'Empresa'}</h4>
@@ -483,6 +487,9 @@ export default function MapScraperView({
       bounds.push([lat, lng]);
     });
 
+    if (skippedCount.current > 0) {
+      console.warn(`[MAP] ${skippedCount.current} leads sem coordenada precisa — ocultos (re-scrape para geocodificar)`);
+    }
     if (bounds.length > 0) {
       try {
         map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14 });

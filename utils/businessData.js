@@ -118,14 +118,25 @@ for (const sel of descSelectors) {
     data.reviews = data.reviewCount;
 
     // --- COORDINATES & PLACE ID ---
-    // Prioridade: 1) link canônico do lugar (tem coords exatas), 2) coords do pin no mapa, 3) centro da viewport
+    // Prioridade: 1) !3d/!4d do link canônico (POI exato), 2) meta lat/lng do painel, 3) Plus Code geocodável, 4) NADA (sem viewport sujo)
     let foundLat = '';
     let foundLng = '';
     let coordSource = '';
 
-    // 1) Botão de compartilhar / link canônico contém !3dLAT!4dLNG exato do POI
-    const shareLink = document.querySelector('a[href*="/maps/place/"]')?.href || document.querySelector('[data-item-id*="share"]')?.href || '';
-    const allLinks = [shareLink, window.location.href].join(' ');
+    const collectLinks = () => {
+      const hrefs = new Set();
+      hrefs.add(window.location.href);
+      document.querySelectorAll('a[href*="/maps/place/"], a[href*="!3d"], [data-item-id*="share"]').forEach(a => {
+        try { if (a.href) hrefs.add(a.href); } catch {}
+        try { const h = a.getAttribute('href'); if (h) hrefs.add(h); } catch {}
+      });
+      const shareBtn = document.querySelector('[data-item-id*="share"]');
+      try { if (shareBtn?.href) hrefs.add(shareBtn.href); } catch {}
+      return [...hrefs].join(' ');
+    };
+    const allLinks = collectLinks();
+
+    // 1) Link canônico do lugar contém !3dLAT!4dLNG exato do POI
     const poiCoord = allLinks.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
     if (poiCoord) {
       foundLat = poiCoord[1];
@@ -133,12 +144,13 @@ for (const sel of descSelectors) {
       coordSource = 'poi';
     }
 
-    // 2) Meta de lugar com coords do marcador
+    // 2) Meta lat/lng injetado no estado da página
     if (!foundLat) {
-      const metaCoords = document.documentElement.innerHTML.match(/"lat":\s*(-?\d+\.\d+)\s*,\s*"lng":\s*(-?\d+\.\d+)/)
-        || document.documentElement.innerHTML.match(/APP_INITIALIZATION_STATE[^;]*?\[\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*\]/);
+      const html = document.documentElement.innerHTML;
+      const metaCoords = html.match(/"lat"\s*:\s*(-?\d+\.\d+)\s*,\s*"lng"\s*:\s*(-?\d+\.\d+)/)
+        || html.match(/APP_INITIALIZATION_STATE[^;]*?\[\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*\]/)
+        || html.match(/"center"\s*:\s*\{\s*"lat"\s*:\s*(-?\d+\.\d+)\s*,\s*"lng"\s*:\s*(-?\d+\.\d+)/);
       if (metaCoords) {
-        // Sanity: deve estar no Brasil (-35 a 5 lat, -74 a -34 lng) pra evitar pegar outra coisa
         const ml = parseFloat(metaCoords[1]);
         const mn = parseFloat(metaCoords[2]);
         if (ml >= -35 && ml <= 5 && mn >= -74 && mn <= -34) {
@@ -149,22 +161,16 @@ for (const sel of descSelectors) {
       }
     }
 
-    // 3) Fallback: centro da viewport @lat,lng (pode estar deslocado)
-    if (!foundLat) {
-      const viewportCoord = window.location.href.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-      if (viewportCoord) {
-        foundLat = viewportCoord[1];
-        foundLng = viewportCoord[2];
-        coordSource = 'viewport';
-      }
-    }
+    // 3) NÃO usa @viewport — deixa vazio pra geocodificar pelo endereço depois
+    // (viewport joga pin no meio da floresta quando o Google ainda não carregou o POI)
 
     if (foundLat) {
       data.latitude = parseFloat(foundLat);
       data.longitude = parseFloat(foundLng);
       data.coordSource = coordSource;
+    } else {
+      data.coordSource = 'none';
     }
-    // PlaceId fallback
     const plusMatch = plusEl?.textContent.match(/0x[a-f0-9]+/) || allLinks.match(/!1s(0x[a-f0-9:]+)/);
     if (plusMatch) data.placeId = plusMatch[0];
 

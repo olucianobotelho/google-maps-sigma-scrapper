@@ -1,6 +1,6 @@
 {
   "name": "sigma-gmaps-scraper",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Desktop Google Maps business data scraper built with Electron + Playwright",
   "main": "main.js",
   "license": "MIT",
