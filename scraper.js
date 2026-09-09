@@ -1,6 +1,6 @@
 const { chromium } = require('playwright');
 const CONFIG = require('./config');
-const { extractBusinessData } = require('./utils/businessData');
+const { extractBusinessData, normalizeInstagramProfileUrl } = require('./utils/businessData');
 const { geocodeAddress, isValidCoord } = require('./utils/geocode');
 const { normalizeAddress } = require('./utils/address-normalizer');
 
@@ -76,28 +76,39 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
       checkCancelled(cancelToken);
       await page.evaluate(() => { const f = document.querySelector('div[role="feed"]'); if (f) f.scrollTop = f.scrollHeight; });
       await page.waitForTimeout(CONFIG.SCROLL_DELAY);
-      const count = await page.locator('a[href*="/maps/place/"]').count();
+      const count = await page.locator('div[role="feed"] a[href*="/maps/place/"]').count();
       onProgress(`  Found: ${count}`);
       if (count === prev) stuck++; else stuck = 0;
       prev = count;
       if (count >= maxResults) break;
     }
 
-    const listings = await page.locator('a[href*="/maps/place/"]').all();
-    const total = Math.min(listings.length, maxResults);
+    const listings = await page.locator('div[role="feed"] a[href*="/maps/place/"]').evaluateAll((anchors, limit) => {
+      const seen = new Set();
+      return anchors
+        .map((anchor) => ({
+          name: (anchor.getAttribute('aria-label') || anchor.textContent || '').trim(),
+          href: anchor.href || '',
+        }))
+        .filter(({ name, href }) => name && href && !seen.has(href) && seen.add(href))
+        .slice(0, limit);
+    }, maxResults);
+    const total = listings.length;
     onProgress(`\nExtracting ${total} places...`);
 
     for (let i = 0; i < total; i++) {
       try {
         checkCancelled(cancelToken);
-        await listings[i].click();
-        try { await page.waitForSelector('h1.DUwDvf', { timeout: 3000 }); } catch {}
+        const target = listings[i];
+        const listing = page
+          .locator('div[role="feed"]')
+          .getByRole('link', { name: target.name, exact: true })
+          .first();
+        await listing.click();
+        await page
+          .getByRole('main', { name: target.name, exact: true })
+          .waitFor({ state: 'visible', timeout: CONFIG.ELEMENT_TIMEOUT });
         await page.waitForTimeout(500);
-        for (let attempt = 0; attempt < 4; attempt++) {
-          const hasPoi = await page.evaluate(() => document.documentElement.innerHTML.includes('!3d-') || document.documentElement.innerHTML.includes('!3d')).catch(() => false);
-          if (hasPoi) break;
-          await page.waitForTimeout(400);
-        }
         checkCancelled(cancelToken);
 
         let place = await extractBusinessData(page);
@@ -134,19 +145,14 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
               if (err.code === 'SCRAPE_CANCELLED') throw err;
             }
           }
-          place.instagram = '';
-          if (place.website && place.website.includes('instagram.com')) {
-            place.instagram = place.website;
-            place.website = '';
-          }
-          if (!place.instagram) {
-            const ig = await page.locator('a[href*="instagram.com"]').first();
-            if (await ig.count() > 0) place.instagram = await ig.getAttribute('href');
-          }
+          place.instagram = normalizeInstagramProfileUrl(place.website);
+          if (place.instagram) place.website = '';
 
-          if (place.website && !place.website.includes('instagram.com') && !place.website.includes('facebook.com') && !place.website.includes('youtube.com')) {
+          if (place.website && !place.website.includes('facebook.com') && !place.website.includes('youtube.com')) {
             checkCancelled(cancelToken);
-            place.email = await scrapeEmails(browser, place.website, onProgress, cancelToken);
+            const contacts = await scrapeWebsiteContacts(browser, place.website, cancelToken);
+            place.email = contacts.email;
+            place.instagram = contacts.instagram;
           } else {
             place.email = '';
           }
@@ -208,7 +214,7 @@ async function gotoWithRetry(page, url, onProgress) {
   }
 }
 
-async function scrapeEmails(browser, url, onProgress, cancelToken = null) {
+async function scrapeWebsiteContacts(browser, url, cancelToken = null) {
   const page = await browser.newPage();
   try {
     checkCancelled(cancelToken);
@@ -216,28 +222,34 @@ async function scrapeEmails(browser, url, onProgress, cancelToken = null) {
     await page.waitForTimeout(2000);
     checkCancelled(cancelToken);
 
-    const emails = await page.evaluate(() => {
+    const contacts = await page.evaluate(() => {
       const found = new Set();
       document.querySelectorAll('a[href^="mailto:"]').forEach(a => {
         const em = a.getAttribute('href').replace('mailto:', '').split('?')[0].trim();
         if (em.includes('@')) found.add(em.toLowerCase());
       });
-      const text = document.body.innerText;
+      const text = document.body?.innerText || '';
       const regex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
       let m;
       while ((m = regex.exec(text)) !== null) {
         const em = m[0].toLowerCase();
         if (!em.endsWith('.png') && !em.endsWith('.jpg') && !em.includes('example.com')) found.add(em);
       }
-      return [...found].slice(0, 5);
+      return {
+        emails: [...found].slice(0, 5),
+        links: Array.from(document.querySelectorAll('a[href]'), (anchor) => anchor.href),
+      };
     });
 
-    await page.close();
-    return emails.join(', ');
+    return {
+      email: contacts.emails.join(', '),
+      instagram: contacts.links.map(normalizeInstagramProfileUrl).find(Boolean) || '',
+    };
   } catch (e) {
-    await page.close().catch(() => {});
     if (e.code === 'SCRAPE_CANCELLED') throw e;
-    return '';
+    return { email: '', instagram: '' };
+  } finally {
+    await page.close().catch(() => {});
   }
 }
 

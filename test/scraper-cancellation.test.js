@@ -31,15 +31,22 @@ test('cancellation inside a listing propagates instead of saving partial results
   const cancelToken = { cancelled: false };
   let browserClosed = false;
   const listing = { click: async () => { cancelToken.cancelled = true; } };
+  const feedLinks = {
+    count: async () => 1,
+    all: async () => [listing],
+    evaluateAll: async () => [{ name: 'Clínica Teste', href: 'https://www.google.com/maps/place/Clinica_Teste' }],
+    getByRole: () => ({ first: () => listing }),
+  };
   const page = {
     route: async () => {},
     goto: async () => {},
     waitForTimeout: async () => {},
     waitForSelector: async () => {},
     evaluate: async () => false,
+    getByRole: () => ({ waitFor: async () => {} }),
     locator: (selector) => selector.includes('button')
       ? { first: () => ({ isVisible: async () => false }) }
-      : { count: async () => 1, all: async () => [listing] },
+      : feedLinks,
     close: async () => {},
   };
   const context = { newPage: async () => page, close: async () => {} };
