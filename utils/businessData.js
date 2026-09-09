@@ -1,3 +1,42 @@
+const INSTAGRAM_NON_PROFILE_PATHS = new Set([
+  'about',
+  'accounts',
+  'developer',
+  'direct',
+  'explore',
+  'legal',
+  'p',
+  'privacy',
+  'reel',
+  'reels',
+  'stories',
+  'tv',
+  'web',
+]);
+
+function normalizeInstagramProfileUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw.startsWith('//') ? `https:${raw}` : raw);
+    const hostname = url.hostname.toLowerCase();
+    if (!['instagram.com', 'www.instagram.com', 'm.instagram.com'].includes(hostname)) return '';
+    const firstPath = url.pathname.split('/').filter(Boolean)[0] || '';
+    const handle = decodeURIComponent(firstPath).replace(/^@/, '');
+    if (
+      !handle ||
+      handle.length > 30 ||
+      INSTAGRAM_NON_PROFILE_PATHS.has(handle.toLowerCase()) ||
+      !/^[a-z0-9._]+$/i.test(handle)
+    ) {
+      return '';
+    }
+    return `https://www.instagram.com/${handle}/`;
+  } catch {
+    return '';
+  }
+}
+
 async function extractBusinessData(page) {
   return await page.evaluate(() => {
     // O Maps pode incluir o ícone de localização (fonte Material, área privada
@@ -7,12 +46,21 @@ async function extractBusinessData(page) {
       .replace(/^[\s\p{Cc}\p{Cf}\p{Co}\u{1F4CD}\u{FE0E}\u{FE0F}]+/u, '')
       .replace(/\s+/gu, ' ')
       .trim();
+    const headings = Array.from(document.querySelectorAll('h1.DUwDvf'));
+    const heading = headings.find((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+    }) || null;
+    const root = heading?.closest('[role="main"][aria-label]') || heading?.closest('[role="main"]') || document;
+    const q = (selector) => root.querySelector(selector);
+    const qa = (selector) => root.querySelectorAll(selector);
     const data = {
-      name: document.querySelector('h1.DUwDvf')?.textContent.trim() || '',
+      name: heading?.textContent.trim() || '',
       rating: 0,
       totalReviews: '0',
       reviewCount: 0,
-      category: document.querySelector('button[jsaction*="category"]')?.textContent.trim() || '',
+      category: q('button[jsaction*="category"]')?.textContent.trim() || '',
       address: '',
       phone: null,
       website: null,
@@ -29,37 +77,37 @@ async function extractBusinessData(page) {
 
     // --- ADDRESS ---
     const addrCandidates = [
-      document.querySelector('button[data-item-id*="address"] div.fontBodyMedium'),
-      document.querySelector('div[data-item-id*="address"] div.fontBodyMedium'),
-      document.querySelector('a[data-item-id*="address"] div.fontBodyMedium'),
-      document.querySelector('button[data-item-id*="address"]'),
-      document.querySelector('div[data-item-id*="address"]'),
-      document.querySelector('[data-item-id*="address"]'),
-      document.querySelector('span[jsinstance]'),
+      q('button[data-item-id*="address"] div.fontBodyMedium'),
+      q('div[data-item-id*="address"] div.fontBodyMedium'),
+      q('a[data-item-id*="address"] div.fontBodyMedium'),
+      q('button[data-item-id*="address"]'),
+      q('div[data-item-id*="address"]'),
+      q('[data-item-id*="address"]'),
+      q('span[jsinstance]'),
     ].filter(Boolean);
     const addrEl = addrCandidates.find((el) => el && el.textContent && el.textContent.trim().length > 3) || null;
     if (addrEl) data.address = normalizeAddress(addrEl.textContent);
 
     // --- PHONE ---
-    const phoneEl = document.querySelector('button[data-item-id*="phone:tel:"] div.fontBodyMedium') ||
-                    document.querySelector('a[href^="tel:"]');
+    const phoneEl = q('button[data-item-id*="phone:tel:"] div.fontBodyMedium') ||
+                    q('a[href^="tel:"]');
     if (phoneEl) data.phone = phoneEl.textContent.trim();
 
     // --- WEBSITE ---
-    const webEl = document.querySelector('a[data-item-id*="authority"]') ||
-                  Array.from(document.querySelectorAll('a[href^="http"]'))
-                    .find(a => !a.href.includes('google.com'));
+    // Lê somente o link oficial do painel ativo: o fallback global copiava
+    // sites e Instagrams do feed lateral para o lead errado.
+    const webEl = q('a[data-item-id*="authority"]');
     if (webEl) data.website = webEl.href;
 
     // --- PLUS CODE ---
-    const plusEl = document.querySelector('button[data-item-id*="oloc"] div.fontBodyMedium');
+    const plusEl = q('button[data-item-id*="oloc"] div.fontBodyMedium');
     if (plusEl) data.plusCode = plusEl.textContent.trim();
 
     const hoursCandidates = [
-      document.querySelector('[aria-label*="Hours"]'),
-      document.querySelector('[aria-label*="horário"]'),
-      document.querySelector('[aria-label*="Horario"]'),
-      document.querySelector('button[data-item-id*="oh"]'),
+      q('[aria-label*="Hours"]'),
+      q('[aria-label*="horário"]'),
+      q('[aria-label*="Horario"]'),
+      q('button[data-item-id*="oh"]'),
     ].filter(Boolean);
     const hoursText = hoursCandidates
       .map(el => el.getAttribute('aria-label') || el.textContent || '')
@@ -67,12 +115,12 @@ async function extractBusinessData(page) {
     if (hoursText) data.openingHours = hoursText.replace(/\s+/g, ' ').trim();
 
     // --- RATING & REVIEWS ---
-    const ratingEl = document.querySelector('div.F7nice span[aria-hidden="true"]');
+    const ratingEl = q('div.F7nice span[aria-hidden="true"]');
     if (ratingEl) data.rating = parseFloat(ratingEl.textContent.replace(',', '.')) || 0;
 
-    const reviewBtn = document.querySelector('div.F7nice button[aria-label*="review"]');
-    const reviewText = reviewBtn?.getAttribute('aria-label') || 
-                       document.querySelector('div.F7nice span[aria-label*="review"]')?.textContent || '';
+    const reviewBtn = q('div.F7nice button[aria-label*="review"]');
+    const reviewText = reviewBtn?.getAttribute('aria-label') ||
+                       q('div.F7nice span[aria-label*="review"]')?.textContent || '';
     const match = reviewText.match(/([\d.,]+)/);
     if (match) {
       data.totalReviews = match[1];
@@ -88,7 +136,7 @@ const descSelectors = [
 ];
 
 for (const sel of descSelectors) {
-  const el = document.querySelector(sel);
+  const el = q(sel);
   if (el && el.textContent.trim().length > 10) {
     let rawDesc = el.textContent.replace(/\s+/g, ' ').trim();
     
@@ -106,7 +154,7 @@ for (const sel of descSelectors) {
 }
 
     // --- PHOTOS ---
-    const imgs = document.querySelectorAll('button[aria-label*="photo"] img, img[src*="googleusercontent"]');
+    const imgs = qa('button[aria-label*="photo"] img, img[src*="googleusercontent"]');
     const photoUrls = [...new Set(Array.from(imgs).map(img => {
       let src = img.src || img.getAttribute('data-src');
       if (!src) return null;
@@ -133,11 +181,11 @@ for (const sel of descSelectors) {
     const collectLinks = () => {
       const hrefs = new Set();
       hrefs.add(window.location.href);
-      document.querySelectorAll('a[href*="/maps/place/"], a[href*="!3d"], [data-item-id*="share"]').forEach(a => {
+      qa('a[href*="/maps/place/"], a[href*="!3d"], [data-item-id*="share"]').forEach(a => {
         try { if (a.href) hrefs.add(a.href); } catch {}
         try { const h = a.getAttribute('href'); if (h) hrefs.add(h); } catch {}
       });
-      const shareBtn = document.querySelector('[data-item-id*="share"]');
+      const shareBtn = q('[data-item-id*="share"]');
       try { if (shareBtn?.href) hrefs.add(shareBtn.href); } catch {}
       return [...hrefs].join(' ');
     };
@@ -186,4 +234,4 @@ for (const sel of descSelectors) {
 }
 
 
-module.exports = { extractBusinessData };
+module.exports = { extractBusinessData, normalizeInstagramProfileUrl };
