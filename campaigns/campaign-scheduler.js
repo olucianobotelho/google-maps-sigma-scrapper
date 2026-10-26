@@ -18,18 +18,49 @@ class CampaignScheduler {
     // Per-campaign last-sent timestamp + max concurrent retries
     this._lastSentAt = new Map();
     this._maxRetries = 2;
+    // Backoff por tentativa (30s, 2min, 10min) com jitter.
+    this._retryBackoffMs = [30 * 1000, 2 * 60 * 1000, 10 * 60 * 1000];
+    // Timeout de um envio individual e watchdog do tick inteiro. Sem isso,
+    // uma promise pendurada congela o loop e nenhuma campanha volta a rodar.
+    this._sendTimeoutMs = 120 * 1000;
+    this._tickWatchdogMs = 5 * 60 * 1000;
+    this._tickTimer = null;
+    this._tickInFlight = 0;
+    // Campanhas pausadas por cota: id -> timestamp em que podem ser retomadas.
+    this._quotaWaiting = new Map();
   }
 
   addCampaign(id) { this.activeCampaigns.add(id); }
   removeCampaign(id) {
     this.activeCampaigns.delete(id);
     this._lastSentAt.delete(id);
+    this._quotaWaiting.delete(id);
   }
 
   start() {
-    if (this.running) return;
+    if (this.running) {
+      // Timer morto (tick pendurado ou handle perdido) não pode impedir a
+      // retomada: sem isso, só reiniciar o app destravava o disparo.
+      if (!this._tickTimer && !this._tickInFlight) this._scheduleNextTick(500);
+      return;
+    }
     this.running = true;
     this._scheduleNextTick(500);
+  }
+
+  _withTimeout(promise, ms, label) {
+    if (!ms || !Number.isFinite(ms)) return promise;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const error = new Error(`${label} excedeu ${Math.round(ms / 1000)}s`);
+        error.code = 'SCHEDULER_TIMEOUT';
+        reject(error);
+      }, ms);
+      promise.then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (error) => { clearTimeout(timer); reject(error); },
+      );
+    });
   }
 
   stop() {
@@ -44,10 +75,20 @@ class CampaignScheduler {
   // but driven by setTimeout so we never drift or stack ticks.
   _scheduleNextTick(delay) {
     if (!this.running) return;
+    if (this._tickTimer) return; // nunca empilha ticks
     this._tickTimer = setTimeout(async () => {
-      try { await this.tick(); }
-      catch (e) { console.log('[SCHEDULER] tick error:', e.message); }
-      this._scheduleNextTick(1000);
+      this._tickTimer = null;
+      this._tickInFlight = Date.now();
+      try {
+        // Watchdog: mesmo que algo dentro do tick pendure, o loop volta a
+        // rodar e as outras campanhas continuam.
+        await this._withTimeout(this.tick(), this._tickWatchdogMs, 'TICK');
+      } catch (e) {
+        console.error('[SCHEDULER] tick error:', e.message);
+      } finally {
+        this._tickInFlight = 0;
+        this._scheduleNextTick(1000);
+      }
     }, delay);
   }
 
@@ -88,13 +129,25 @@ class CampaignScheduler {
    * Escolhe lead pendente + provider com cota disponível.
    * Preferência: connectionId do lead → outros números da campanha com cota.
    */
-  _pickNextSend(campaign) {
+  _pickNextSend(campaign, now = Date.now()) {
     const leads = campaign.leads || [];
     const pendingIdxs = [];
     for (let i = 0; i < leads.length; i++) {
       if (leads[i].status === 'pending') pendingIdxs.push(i);
     }
     if (!pendingIdxs.length) return { done: true };
+
+    // Lead em backoff espera a própria janela antes de nova tentativa.
+    const readyIdxs = pendingIdxs.filter((idx) => {
+      const nextAt = Number(leads[idx].nextAttemptAt) || 0;
+      return !nextAt || nextAt <= now;
+    });
+    if (!readyIdxs.length) {
+      const nextAt = Math.min(
+        ...pendingIdxs.map((idx) => Number(leads[idx].nextAttemptAt) || now),
+      );
+      return { waiting: true, nextAt };
+    }
 
     const campIds = this._campaignConnectionIds(campaign);
     const quota = this._getDailyQuota();
@@ -113,7 +166,7 @@ class CampaignScheduler {
     };
 
     // 1) lead com connectionId próprio e cota
-    for (const idx of pendingIdxs) {
+    for (const idx of readyIdxs) {
       const lead = leads[idx];
       const preferred = lead.connectionId || campaign.connectionId;
       const hit = tryConn(preferred, idx);
@@ -121,16 +174,18 @@ class CampaignScheduler {
     }
 
     // 2) reatribui para outro número da campanha com cota
-    for (const idx of pendingIdxs) {
+    for (const idx of readyIdxs) {
       for (const cid of campIds) {
         const hit = tryConn(cid, idx);
         if (hit) return hit;
       }
     }
 
-    // 3) qualquer sessão online com cota (fallback legado)
-    if (map) {
-      for (const idx of pendingIdxs) {
+    // 3) Fallback legado SÓ para campanha sem número definido. Uma campanha
+    // com número próprio nunca dispara por outra sessão (evita sair pelo
+    // WhatsApp pessoal quando o número escolhido cai).
+    if (map && campIds.length === 0) {
+      for (const idx of readyIdxs) {
         for (const [cid, provider] of map.entries()) {
           if (!this._ready(provider)) continue;
           if (quota) {
@@ -166,12 +221,17 @@ class CampaignScheduler {
   }
 
   async tick() {
-    if (this.activeCampaigns.size === 0) {
+    const now = Date.now();
+
+    // Retoma campanhas pausadas por cota quando o dia virou (ou quando o
+    // WhatsApp volta) — sem exigir clique do usuário e sem reiniciar o app.
+    await this._resumeQuotaPaused(now);
+
+    if (this.activeCampaigns.size === 0 && this._quotaWaiting.size === 0) {
       this.stop();
       return;
     }
 
-    const now = Date.now();
     const campaignIds = [...this.activeCampaigns];
     const settingsCamp = this._getSettingsCampaigns();
 
@@ -220,7 +280,12 @@ class CampaignScheduler {
       const baseInterval = campaign.schedule?.intervalMs || 5000;
       if (lastSent && (now - lastSent) < this._intervalWithJitter(baseInterval)) continue;
 
-      const pick = this._pickNextSend(campaign);
+      const pick = this._pickNextSend(campaign, now);
+
+      if (pick.waiting) {
+        // Todos os pendentes estão em backoff; nada a fazer neste tick.
+        continue;
+      }
 
       if (pick.done) {
         campaign.status = 'completed';
@@ -238,23 +303,27 @@ class CampaignScheduler {
           campaign.status = 'paused';
           campaign.pauseReason = 'daily_limit';
           campaign.waitReason = 'daily_limit';
+          const resumeAt = this._nextQuotaResetAt(now);
           this.store.update(campaignId, {
             status: 'paused',
             pauseReason: 'daily_limit',
             waitReason: 'daily_limit',
+            nextResumeAt: resumeAt,
             updatedAt: now,
           });
           this.activeCampaigns.delete(campaignId);
           this._lastSentAt.delete(campaignId);
+          this._quotaWaiting.set(campaignId, resumeAt);
           this.store.pushEvent(campaign, {
             type: 'daily_limit',
-            msg: 'Limite diário de mensagens atingido — campanha salva e retoma depois',
+            msg: 'Limite diário de mensagens atingido — campanha retoma automaticamente quando a cota renovar',
           });
           this.store.update(campaignId, { eventLog: campaign.eventLog }, true);
           if (this.onProgress) {
             this.onProgress(campaignId, 'daily-limit', {
               stats: campaign.stats,
               limit: pick.limitCfg?.dailyLimit,
+              nextResumeAt: resumeAt,
             });
           }
           console.log(`[SCHEDULER] Campanha ${campaignId} pausada: limite diário`);
@@ -323,9 +392,17 @@ class CampaignScheduler {
 
         let result = null;
         if (mediaContent) {
-          result = await provider.sendMedia(destination, mediaContent);
+          result = await this._withTimeout(
+            provider.sendMedia(destination, mediaContent),
+            this._sendTimeoutMs,
+            'SEND media',
+          );
         } else {
-          result = await provider.sendMessage(destination, content);
+          result = await this._withTimeout(
+            provider.sendMessage(destination, content),
+            this._sendTimeoutMs,
+            'SEND text',
+          );
         }
 
         if (result && result.success && result.messageId) {
@@ -334,8 +411,10 @@ class CampaignScheduler {
           lead.messageId = result.messageId;
           lead.jid = result.jid || null;
           lead.connectionId = connectionId;
+          lead.sentWith = connectionId;
           lead.errorMessage = null;
           lead.retryCount = 0;
+          lead.nextAttemptAt = null;
           if (this.campaignManager) {
             this.campaignManager.registerMessageId(campaignId, pick.leadIndex, result.messageId);
           }
@@ -359,18 +438,31 @@ class CampaignScheduler {
           if (attempts <= this._maxRetries) {
             lead.status = 'pending';
             lead.errorMessage = `tentativa ${attempts}: ${errMsg}`;
-            console.warn(`[SCHEDULER] retry ${attempts}: ${errMsg}`);
+            const baseDelay = this._retryBackoffMs[
+              Math.min(attempts - 1, this._retryBackoffMs.length - 1)
+            ];
+            const delay = Math.round(baseDelay * (1 + Math.random() * 0.25));
+            lead.nextAttemptAt = now + delay;
+            console.warn(
+              `[SCHEDULER] retry ${attempts} em ${Math.round(delay / 1000)}s: ${errMsg}`,
+            );
           } else {
             lead.status = 'failed';
             lead.errorMessage = errMsg;
             lead.sentAt = now;
+            lead.nextAttemptAt = null;
             console.error(`[SCHEDULER] FAIL: ${errMsg}`);
           }
         }
       } catch (e) {
+        const timedOut =
+          e?.code === 'SCHEDULER_TIMEOUT' || e?.code === 'SEND_TIMEOUT';
         lead.status = 'failed';
-        lead.errorMessage = e.message;
+        lead.errorMessage = timedOut
+          ? 'Tempo esgotado no envio — confirme no WhatsApp antes de reenviar'
+          : e.message;
         lead.sentAt = now;
+        lead.nextAttemptAt = null;
         console.error(`[SCHEDULER] exception:`, e.message);
       }
 
@@ -396,6 +488,73 @@ class CampaignScheduler {
         });
       }
     }
+  }
+
+  /** Retoma campanhas pausadas por cota quando o dia virou. */
+  async _resumeQuotaPaused(now) {
+    if (!this._quotaWaiting.size) return;
+    const settings = this._getSettingsCampaigns();
+    if (settings.autoResumeDailyLimit === false) return;
+
+    for (const [campaignId, resumeAt] of [...this._quotaWaiting.entries()]) {
+      if (Number(resumeAt) > now) continue;
+      this._quotaWaiting.delete(campaignId);
+      const campaign = this.store.get(campaignId);
+      if (!campaign) continue;
+      if (campaign.status !== 'paused' || campaign.pauseReason !== 'daily_limit') continue;
+
+      try {
+        if (typeof this.campaignManager?.resume === 'function') {
+          this.campaignManager.resume(campaignId, { confirmRecovery: true });
+        } else {
+          this.activeCampaigns.add(campaignId);
+          this.start();
+        }
+        this.store.pushEvent(campaign, {
+          type: 'daily_limit_reset',
+          msg: 'Cota diária renovada — campanha retomada automaticamente',
+        });
+        this.store.update(campaignId, { eventLog: campaign.eventLog, nextResumeAt: null }, true);
+        console.log(`[SCHEDULER] Campanha ${campaignId} retomada após renovar a cota`);
+        if (this.onProgress) {
+          this.onProgress(campaignId, 'resumed', { reason: 'daily_limit_reset' });
+        }
+      } catch (e) {
+        // WhatsApp offline — tenta de novo em 5 min sem perder a campanha.
+        this._quotaWaiting.set(campaignId, now + 5 * 60 * 1000);
+        console.log(
+          `[SCHEDULER] Cota renovada, mas ${campaignId} segue pausada: ${e.message}`,
+        );
+      }
+    }
+  }
+
+  /** Próxima meia-noite local: momento em que a cota diária zera. */
+  _nextQuotaResetAt(now = Date.now()) {
+    const d = new Date(now);
+    d.setHours(24, 0, 0, 0);
+    return d.getTime();
+  }
+
+  /**
+   * Próximo instante em que a janela de horário permite enviar.
+   * null = já está dentro da janela (ou não há janela ativa).
+   */
+  nextWindowStartAt(campaign, now = Date.now()) {
+    const settings = this._getSettingsCampaigns();
+    const schedule = campaign?.schedule || {};
+    if (this._withinWorkingHours(schedule, settings, now)) return null;
+
+    const start = schedule.workingHours?.start
+      || settings.workingHoursStart
+      || '07:00';
+    const startM = this._hhmmToMinutes(start);
+    if (startM == null) return null;
+
+    const d = new Date(now);
+    d.setHours(Math.floor(startM / 60), startM % 60, 0, 0);
+    if (d.getTime() <= now) d.setDate(d.getDate() + 1);
+    return d.getTime();
   }
 
   /**
@@ -480,6 +639,7 @@ class CampaignScheduler {
         lead.status = 'pending';
         lead.retryCount = 0;
         lead.errorMessage = null;
+        lead.nextAttemptAt = null;
         count++;
       }
     }
@@ -490,8 +650,11 @@ class CampaignScheduler {
         stats: campaign.stats,
         status: campaign.status === 'completed' ? 'running' : campaign.status,
         pauseReason: null,
+        waitReason: null,
+        nextResumeAt: null,
         updatedAt: Date.now(),
       });
+      this._quotaWaiting.delete(campaignId);
       this.activeCampaigns.add(campaignId);
       this.start();
     }

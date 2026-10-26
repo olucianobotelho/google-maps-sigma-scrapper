@@ -71,35 +71,43 @@ function _resolveOneSpintax(text) {
   return text;
 }
 
+/**
+ * Substitui variáveis. Quando o lead não tem o dado, o placeholder é removido
+ * (nunca enviado literal como "Olá {{nome}}") e os espaços são normalizados.
+ */
+function applyVariables(text, leadData) {
+  let result = String(text || '').replace(
+    /\{\{(\w+)\}\}/g,
+    (match, varName) => resolveVar(varName, leadData),
+  );
+  result = result
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([,.;:!?])/g, '$1')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return resolveSpintax(result);
+}
+
 function interpolate(template, leadData) {
   if (typeof template === 'string') {
-    let result = template.replace(/\{\{(\w+)\}\}/g, (match, varName) => resolveVar(varName, leadData) || match);
-    result = resolveSpintax(result);
-    return result;
+    return applyVariables(template, leadData);
   }
   if (typeof template === 'object' && template !== null) {
     const result = {};
     if (template.text) {
-      result.text = resolveSpintax(
-        String(template.text).replace(/\{\{(\w+)\}\}/g, (match, varName) => resolveVar(varName, leadData) || match)
-      );
+      result.text = applyVariables(template.text, leadData);
     }
     if (template.header) {
-      result.header = resolveSpintax(
-        String(template.header).replace(/\{\{(\w+)\}\}/g, (match, varName) => resolveVar(varName, leadData) || match)
-      );
+      result.header = applyVariables(template.header, leadData);
     }
     if (template.footer) {
-      result.footer = resolveSpintax(
-        String(template.footer).replace(/\{\{(\w+)\}\}/g, (match, varName) => resolveVar(varName, leadData) || match)
-      );
+      result.footer = applyVariables(template.footer, leadData);
     }
     if (Array.isArray(template.buttons)) {
       result.buttons = template.buttons.map(b => ({
         id: b.id || b.buttonId,
-        text: resolveSpintax(
-          String(b.text || b.buttonText || '').replace(/\{\{(\w+)\}\}/g, (match, varName) => resolveVar(varName, leadData) || match)
-        ),
+        text: applyVariables(b.text || b.buttonText || '', leadData),
       }));
     }
     // Pass media attachment through (no interpolation needed for binary)

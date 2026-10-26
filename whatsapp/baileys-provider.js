@@ -5,6 +5,13 @@ const fs = require("fs");
 const path = require("path");
 const { resolveContactIdentity } = require('./contact-identity-resolver');
 
+// Timeout de envio: uma mensagem que o WhatsApp não confirma não pode travar
+// o loop de campanhas indefinidamente.
+const SEND_TIMEOUT_MS = 60 * 1000;
+// Cache de validação de número (evita 1 query USync por destinatário).
+const JID_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const JID_MISS_TTL_MS = 6 * 60 * 60 * 1000;
+
 class BaileysProvider extends WhatsAppProvider {
   constructor(config, onStatus, onChatEvent, userDataPath) {
     super(config, onStatus);
@@ -32,6 +39,50 @@ class BaileysProvider extends WhatsAppProvider {
     this._syncActive = false; // Flag to enable adaptive throttling during sync
     // messageId -> { filePath, mimetype, kind, jids[] } — mídia enviada por nós (play local)
     this._outgoingMediaById = new Map();
+    // digits -> { jid: string|null, at: number } | resultado de onWhatsApp
+    this._jidLookupCache = new Map();
+  }
+
+  /** Resolve parcial com timeout: não deixa um envio pendurado congelar a fila. */
+  _withSendTimeout(promise, label) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const error = new Error(
+          `${label || 'Envio'} não foi confirmado pelo WhatsApp em ${Math.round(SEND_TIMEOUT_MS / 1000)}s`,
+        );
+        error.code = 'SEND_TIMEOUT';
+        reject(error);
+      }, SEND_TIMEOUT_MS);
+      promise.then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (error) => { clearTimeout(timer); reject(error); },
+      );
+    });
+  }
+
+  _sendWithTimeout(jid, payload, options, label) {
+    return this._withSendTimeout(this.sock.sendMessage(jid, payload, options), label);
+  }
+
+  _cacheJidLookup(digits, jid) {
+    const key = String(digits || '');
+    if (!key) return;
+    this._jidLookupCache.set(key, { jid: jid || null, at: Date.now() });
+    if (this._jidLookupCache.size > 5000) {
+      const oldest = this._jidLookupCache.keys().next().value;
+      this._jidLookupCache.delete(oldest);
+    }
+  }
+
+  _readJidLookup(digits) {
+    const cached = this._jidLookupCache.get(String(digits || ''));
+    if (!cached) return null;
+    const ttl = cached.jid ? JID_CACHE_TTL_MS : JID_MISS_TTL_MS;
+    if (Date.now() - cached.at > ttl) {
+      this._jidLookupCache.delete(String(digits || ''));
+      return null;
+    }
+    return cached;
   }
 
   async connect() {
@@ -135,7 +186,9 @@ class BaileysProvider extends WhatsAppProvider {
           emitOwnEvents: true,
           markOnlineOnConnect: false,
           connectTimeoutMs: 60000,
-          defaultQueryTimeoutMs: undefined,
+          // Sem timeout, uma query IQ sem resposta (ex.: onWhatsApp) trava
+          // o envio de campanha para sempre. 60s é o padrão do Baileys.
+          defaultQueryTimeoutMs: 60000,
           qrTimeout: 60000,
           getMessage: async (key) => {
             // Return stored message for protocol to resolve references
@@ -1046,7 +1099,20 @@ class BaileysProvider extends WhatsAppProvider {
 
     let lastError = "";
     let usedOnWhatsApp = false;
+    let checkedAndMissing = false;
+    let queryFailed = false;
     for (const d of [...new Set(candidates)]) {
+      // Cache: campanha com dezenas de leads não pode fazer 1 USync por lead.
+      const cached = this._readJidLookup(d);
+      if (cached) {
+        if (cached.jid) {
+          this._registerAlias(cached.jid, `${d}@s.whatsapp.net`);
+          return cached.jid;
+        }
+        checkedAndMissing = true;
+        lastError = `Número ${d} não tem WhatsApp (ou não foi encontrado)`;
+        continue;
+      }
       try {
         if (typeof this.sock.onWhatsApp !== "function") break;
         usedOnWhatsApp = true;
@@ -1054,6 +1120,7 @@ class BaileysProvider extends WhatsAppProvider {
         const hit = Array.isArray(results)
           ? results.find((r) => r && r.exists !== false && r.jid)
           : null;
+        this._cacheJidLookup(d, hit?.jid || null);
         if (hit?.jid) {
           this._registerAlias(hit.jid, `${d}@s.whatsapp.net`);
           return hit.jid;
@@ -1061,7 +1128,8 @@ class BaileysProvider extends WhatsAppProvider {
         lastError = `Número ${d} não tem WhatsApp (ou não foi encontrado)`;
       } catch (e) {
         lastError = e.message || String(e);
-        usedOnWhatsApp = false; // API quebrou → permite fallback
+        // API quebrou/timeout → não condena o lead: tenta o JID calculado.
+        queryFailed = true;
       }
     }
 
@@ -1072,7 +1140,7 @@ class BaileysProvider extends WhatsAppProvider {
       return known;
     }
 
-    if (usedOnWhatsApp) {
+    if (checkedAndMissing || (usedOnWhatsApp && !queryFailed)) {
       throw new Error(lastError || `Número sem WhatsApp: ${to}`);
     }
 
@@ -1640,7 +1708,7 @@ class BaileysProvider extends WhatsAppProvider {
       if (content?.buttons?.length) {
         // Botões legados costumam falhar no WhatsApp atual — fallback para texto
         try {
-          result = await this.sock.sendMessage(
+          result = await this._sendWithTimeout(
             jid,
             {
               text: content.header || content.text || text,
@@ -1654,16 +1722,17 @@ class BaileysProvider extends WhatsAppProvider {
               viewOnce: false,
             },
             options,
+            'Envio de mensagem',
           );
         } catch (btnErr) {
           console.warn("[BAILEYS] botões falharam, enviando texto:", btnErr.message);
           const plain = [content.header, content.text, content.footer]
             .filter(Boolean)
             .join("\n");
-          result = await this.sock.sendMessage(jid, { text: plain || text }, options);
+          result = await this._sendWithTimeout(jid, { text: plain || text }, options, 'Envio de mensagem');
         }
       } else {
-        result = await this.sock.sendMessage(jid, { text: String(text) }, options);
+        result = await this._sendWithTimeout(jid, { text: String(text) }, options, 'Envio de mensagem');
       }
 
       const messageId = result?.key?.id;
@@ -1727,7 +1796,7 @@ class BaileysProvider extends WhatsAppProvider {
       if (!p.image && !p.video && !p.audio && !p.document && !p.sticker) {
         return { success: false, error: "Mídia inválida ou vazia" };
       }
-      const r = await this.sock.sendMessage(jid, p);
+      const r = await this._sendWithTimeout(jid, p, undefined, 'Envio de mídia');
       const messageId = r?.key?.id;
       if (!messageId) {
         return {

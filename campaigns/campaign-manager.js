@@ -328,20 +328,27 @@ class CampaignManager {
       ready: this._providerReady(p),
     }));
 
-    const tryOrder = [];
+    // Números da campanha têm prioridade absoluta. Uma campanha com número
+    // definido NUNCA dispara por outra sessão: se o número caiu, o correto é
+    // bloquear com mensagem clara em vez de trocar de remetente sozinho.
+    const campaignIds = [];
     if (Array.isArray(campaign?.connectionIds)) {
       for (const id of campaign.connectionIds) {
-        if (id && !tryOrder.includes(id)) tryOrder.push(id);
+        if (id && !campaignIds.includes(id)) campaignIds.push(id);
       }
     }
-    if (campaign?.connectionId && !tryOrder.includes(campaign.connectionId)) {
-      tryOrder.push(campaign.connectionId);
+    if (campaign?.connectionId && !campaignIds.includes(campaign.connectionId)) {
+      campaignIds.push(campaign.connectionId);
     }
-    if (preferredActiveId && !tryOrder.includes(preferredActiveId)) {
-      tryOrder.push(preferredActiveId);
-    }
-    for (const [id] of map.entries()) {
-      if (!tryOrder.includes(id)) tryOrder.push(id);
+
+    const tryOrder = [...campaignIds];
+    if (campaignIds.length === 0) {
+      if (preferredActiveId && !tryOrder.includes(preferredActiveId)) {
+        tryOrder.push(preferredActiveId);
+      }
+      for (const [id] of map.entries()) {
+        if (!tryOrder.includes(id)) tryOrder.push(id);
+      }
     }
 
     for (const id of tryOrder) {
@@ -379,6 +386,15 @@ class CampaignManager {
     }
     if (campaign.status === 'interrupted' && opts.confirmRecovery !== true) {
       throw new Error('Campanha interrompida exige confirmação explícita antes da retomada.');
+    }
+
+    // Meta Cloud API não envia mídia (sendMedia devolve erro). Falhar agora é
+    // melhor do que marcar a lista inteira como falha durante o disparo.
+    const hasMedia = !!(campaign.media || campaign.template?.media);
+    if (campaign.provider === 'meta' && hasMedia) {
+      throw new Error(
+        'Este número usa a Meta Cloud API, que não suporta envio de mídia. Remova o anexo da campanha ou use uma conexão Baileys.',
+      );
     }
 
     // Disparo direto: ignora agendamento futuro e dispara agora.
@@ -425,6 +441,7 @@ class CampaignManager {
       status: nextStatus,
       pauseReason: null,
       waitReason: null,
+      nextResumeAt: null,
     });
 
     if (!this.scheduler) {

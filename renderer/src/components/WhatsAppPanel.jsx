@@ -38,6 +38,7 @@ import {
   MoreVertical,
   Pause as PauseIcon,
   Play as PlayIcon,
+  RotateCcw,
 } from 'lucide-react';
 import TriggersManagerModal from './TriggersManagerModal';
 import ChatVoicePlayer from './ChatVoicePlayer';
@@ -3558,10 +3559,44 @@ function WhatsAppPanel({ waStatus, setWaStatus, addLog }) {
     ).slice(0, 80);
   }, [waGroups, recipientSearch]);
 
+  // True quando a campanha vai nascer em espera por causa do horário de disparo.
+  const isOutsideWorkingHours = (campaign) => {
+    const wh = campaign?.schedule?.workingHours;
+    const enabled = wh ? wh.enabled !== false : settings.campaigns?.workingHoursEnabled !== false;
+    if (!enabled) return false;
+    const toMinutes = (value) => {
+      const m = String(value || '').match(/^(\d{1,2}):?(\d{2})?$/);
+      return m ? parseInt(m[1], 10) * 60 + (parseInt(m[2], 10) || 0) : null;
+    };
+    const start = toMinutes(wh?.start || settings.campaigns?.workingHoursStart || '07:00');
+    const end = toMinutes(wh?.end || settings.campaigns?.workingHoursEnd || '18:00');
+    if (start == null || end == null) return false;
+    const now = new Date();
+    const current = now.getHours() * 60 + now.getMinutes();
+    return end <= start
+      ? !(current >= start || current < end)
+      : !(current >= start && current < end);
+  };
+
+  // Avisa (e permite desistir) quando o disparo vai nascer em espera.
+  const confirmOutsideWorkingHours = (campaign) => {
+    if (!campaign || !isOutsideWorkingHours(campaign)) return true;
+    const wh = campaign.schedule?.workingHours;
+    const start = wh?.start || settings.campaigns?.workingHoursStart || '07:00';
+    const end = wh?.end || settings.campaigns?.workingHoursEnd || '18:00';
+    return confirm(
+      `Agora está fora da janela de disparo (${start}–${end}).\n\n` +
+        `A campanha vai ficar aguardando e só envia a partir de ${start}. ` +
+        'Para disparar a qualquer hora, desligue "Só disparar em horário comercial" em Configurações.\n\n' +
+        'Continuar?',
+    );
+  };
+
   const handleStartCampaign = async (id, { forceNow = false } = {}) => {
     if (!window.campaignAPI) return;
     const campaign = campaigns.find((item) => item.id === id);
     const confirmRecovery = campaign?.status === 'interrupted';
+    if (!confirmOutsideWorkingHours(campaign)) return;
     if (confirmRecovery && !confirm('Esta campanha foi interrompida ao fechar/reiniciar o app. Confirmar retomada manual?')) {
       return;
     }
@@ -3569,8 +3604,10 @@ function WhatsAppPanel({ waStatus, setWaStatus, addLog }) {
       const when = new Date(campaign.schedule.startAt).toLocaleString('pt-BR');
       if (!confirm(`Disparar agora? O agendamento (${when}) será ignorado.`)) return;
     }
-    // Preferência: número ativo na UI (o que o user está vendo como conectado)
+    // O número da campanha tem prioridade: o ativo na tela só é usado quando a
+    // campanha ainda não tem um definido (evita disparar pelo número errado).
     const connId =
+      campaign?.connectionId ||
       activeConnectionId ||
       campaignConnectionId ||
       connectedSessions[0]?.id ||
@@ -3607,9 +3644,40 @@ function WhatsAppPanel({ waStatus, setWaStatus, addLog }) {
     }
   };
 
+  const handleRetryFailed = async (id) => {
+    if (!window.campaignAPI?.retryFailed) return;
+    const campaign = campaigns.find((item) => item.id === id);
+    const connId =
+      campaign?.connectionId ||
+      activeConnectionId ||
+      campaignConnectionId ||
+      connectedSessions[0]?.id ||
+      null;
+    try {
+      const res = await window.campaignAPI.retryFailed(id, connId);
+      if (res && res.success === false) {
+        alert('Não foi possível reenviar: ' + (res.error || 'erro desconhecido'));
+        return;
+      }
+      const count = res?.count || 0;
+      loadCampaigns();
+      addLog(
+        count > 0
+          ? `[CAMPAIGN] ${count} falha(s) voltaram para a fila de envio.`
+          : '[CAMPAIGN] Nenhuma falha para reenviar.',
+      );
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao reenviar falhas: ' + (e.message || e));
+    }
+  };
+
   const handleResumeCampaign = async (id) => {
     if (!window.campaignAPI) return;
+    const campaign = campaigns.find((item) => item.id === id);
+    if (!confirmOutsideWorkingHours(campaign)) return;
     const connId =
+      campaign?.connectionId ||
       activeConnectionId ||
       campaignConnectionId ||
       connectedSessions[0]?.id ||
@@ -5009,6 +5077,7 @@ function WhatsAppPanel({ waStatus, setWaStatus, addLog }) {
                       const total = stats.total || 0;
                       const read = stats.read || 0;
                       const replied = stats.replied || 0;
+                      const failed = stats.failed || 0;
                       const pct = Math.round((sent / (total || 1)) * 100);
                       const canStart = ['ready', 'paused', 'interrupted'].includes(c.status);
                       const canPause = ['running', 'scheduled'].includes(c.status);
@@ -5037,9 +5106,17 @@ function WhatsAppPanel({ waStatus, setWaStatus, addLog }) {
                         workingHoursStart: settings.campaigns?.workingHoursStart || '07:00',
                         workingHoursEnd: settings.campaigns?.workingHoursEnd || '18:00',
                       });
+                      const retryAtLabel = c.nextResumeAt
+                        ? new Date(c.nextResumeAt).toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : null;
                       const statusLabel =
                         c.status === 'paused' && c.pauseReason === 'daily_limit'
-                          ? 'Limite de hoje esgotado'
+                          ? (retryAtLabel
+                              ? `Limite de hoje · volta ${retryAtLabel}`
+                              : 'Limite de hoje esgotado')
                           : c.status === 'paused' && c.pauseReason === 'missed_schedule'
                             ? 'Horário perdido'
                           : c.status === 'running' && c.waitReason === 'outside_hours'
@@ -5051,6 +5128,7 @@ function WhatsAppPanel({ waStatus, setWaStatus, addLog }) {
                                   running: 'Em andamento',
                                   scheduled: 'Agendada',
                                   paused: 'Pausada',
+                                  interrupted: 'Interrompida',
                                   completed: 'Concluída',
                                   cancelled: 'Cancelada',
                                   failed: 'Com falhas',
@@ -5110,6 +5188,16 @@ function WhatsAppPanel({ waStatus, setWaStatus, addLog }) {
                               </>
                             ) : null}
                             <div className="od-camp-secondary">
+                              {failed > 0 && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-compact od-action-secondary"
+                                  title="Voltar as mensagens que falharam para a fila de envio"
+                                  onClick={() => handleRetryFailed(c.id)}
+                                >
+                                  <RotateCcw size={13} aria-hidden="true" /> Reenviar falhas ({failed})
+                                </button>
+                              )}
                               <button type="button" className="btn btn-secondary btn-compact od-action-secondary" onClick={() => openCampaignKanban(c)}>
                                 <ListTodo size={13} aria-hidden="true" /> Kanban
                               </button>
