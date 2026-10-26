@@ -52,6 +52,7 @@ const AGGREGATOR_HOSTS = [
   'linktr.ee',
   'linktree.com',
   'beacons.ai',
+  'bio.site',
   'bio.link',
   'taplink.cc',
   'lnk.bio',
@@ -59,6 +60,22 @@ const AGGREGATOR_HOSTS = [
   'allmylinks.com',
   'campsite.bio',
 ];
+
+// Marketplace e encurtadores também não são o site da empresa: apontam para
+// perfis/aluguel de vitrine ou para outra URL que precisaria ser resolvida.
+const MARKETPLACE_HOSTS = [
+  'ifood.com.br',
+  'getninjas.com.br',
+  'doctoralia.com.br',
+  'tripadvisor.com',
+  'tripadvisor.com.br',
+  'reclameaqui.com.br',
+];
+
+const SHORTENER_HOSTS = ['bit.ly', 'tinyurl.com', 't.co', 'is.gd'];
+
+// CDN de foto/vídeo de rede social: o link é a imagem do perfil, não um site.
+const MEDIA_CDN_HOSTS = ['cdninstagram.com', 'fbcdn.net', 'licdn.com'];
 
 // Caminhos do Instagram que não são perfil de empresa.
 const INSTAGRAM_RESERVED_SEGMENTS = new Set([
@@ -136,6 +153,39 @@ function isAggregatorUrl(value) {
   return matchesHost(host, AGGREGATOR_HOSTS);
 }
 
+function isMarketplaceUrl(value) {
+  const host = hostOf(value);
+  if (!host) return false;
+  return matchesHost(host, MARKETPLACE_HOSTS);
+}
+
+function isShortenerUrl(value) {
+  const host = hostOf(value);
+  if (!host) return false;
+  return matchesHost(host, SHORTENER_HOSTS);
+}
+
+function isMediaCdnUrl(value) {
+  const host = hostOf(value);
+  if (!host) return false;
+  return matchesHost(host, MEDIA_CDN_HOSTS);
+}
+
+/**
+ * Nada fora de domínio próprio deve ocupar o campo `site`: rede social,
+ * link-in-bio (linktr.ee…), marketplace, encurtador, CDN de mídia e host do
+ * Google. Instagram é o único caso que migra para o campo `instagram` em vez
+ * de sumir.
+ */
+function isNonSiteUrl(value) {
+  return isGoogleOwnedUrl(value)
+    || isSocialUrl(value)
+    || isAggregatorUrl(value)
+    || isMarketplaceUrl(value)
+    || isShortenerUrl(value)
+    || isMediaCdnUrl(value);
+}
+
 function isInstagramHost(host) {
   return host === 'instagram.com' || host.endsWith('.instagram.com') || host === 'instagr.am' || host.endsWith('.instagr.am');
 }
@@ -185,6 +235,8 @@ function stripTrackingParams(url) {
 function normalizeWebsite(value, options = {}) {
   const raw = unwrapRedirect(value);
   if (!raw) return '';
+  // "@empresa" é handle de rede social colado na coluna de site.
+  if (raw.startsWith('@')) return '';
   let url;
   try {
     url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
@@ -197,9 +249,23 @@ function normalizeWebsite(value, options = {}) {
   const parsed = parse(host);
   if (!parsed.domain) return '';
   if (isGoogleOwnedUrl(host)) return '';
-  if (!options.allowInstagram && isInstagramUrl(host)) return '';
+  if (isInstagramUrl(host)) return options.allowInstagram ? withCleanQuery(url) : '';
+  if (isSocialUrl(host) || isAggregatorUrl(host) || isMarketplaceUrl(host) || isShortenerUrl(host)) return '';
+  if (isMediaCdnUrl(host)) return '';
+  return withCleanQuery(url);
+}
+
+function withCleanQuery(url) {
   stripTrackingParams(url);
   return url.href;
+}
+
+/**
+ * Decisão única de "tem site de verdade" para filtros, contadores e score.
+ * Instagram/Linktree/Facebook/marketplace/encurtador retornam false.
+ */
+function isRealWebsite(value) {
+  return Boolean(normalizeWebsite(value));
 }
 
 /** Aceita URL, "instagram.com/empresa", "@empresa" ou "empresa" e devolve o @handle. */
@@ -208,8 +274,11 @@ function extractInstagramHandle(value) {
   if (!raw) return '';
   const cleaned = cleanText(raw).replace(/^@+/, '');
   if (!cleaned) return '';
+  const explicitHandle = cleanText(raw).startsWith('@');
   if (!cleaned.includes('/')) {
-    if (looksLikeDomain(cleaned)) return '';
+    // "@cafe.co" é handle explícito; sem o @, um domínio colado na coluna de
+    // Instagram não pode virar perfil.
+    if (looksLikeDomain(cleaned) && !explicitHandle) return '';
     return /^[a-z0-9._]{1,30}$/i.test(cleaned) ? cleaned : '';
   }
   if (!isInstagramUrl(cleaned)) return '';
@@ -254,7 +323,12 @@ function normalizePhoneDisplay(value) {
  */
 function normalizeLeadLinks(raw = {}) {
   let instagram = normalizeInstagram(raw.instagram || raw.ig);
-  let website = normalizeWebsite(raw.website || raw.site || raw.url, { allowInstagram: true });
+  const rawWebsite = raw.website || raw.site || raw.url;
+  let website = normalizeWebsite(rawWebsite, { allowInstagram: true });
+  // Handle colado no campo de site vai para o campo de Instagram.
+  if (!website && !instagram && cleanText(rawWebsite).startsWith('@')) {
+    instagram = normalizeInstagram(rawWebsite);
+  }
   if (website && isInstagramUrl(website)) {
     if (!instagram) instagram = normalizeInstagram(website);
     website = '';
@@ -272,6 +346,11 @@ module.exports = {
   isGoogleOwnedUrl,
   isSocialUrl,
   isAggregatorUrl,
+  isMarketplaceUrl,
+  isShortenerUrl,
+  isMediaCdnUrl,
+  isNonSiteUrl,
+  isRealWebsite,
   isInstagramUrl,
   looksLikeDomain,
   hostOf,

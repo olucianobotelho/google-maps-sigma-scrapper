@@ -6,6 +6,11 @@ const {
   instagramProfileUrl,
   normalizeLeadLinks,
   normalizePhoneDisplay,
+  isRealWebsite,
+  isNonSiteUrl,
+  isAggregatorUrl,
+  isMarketplaceUrl,
+  isShortenerUrl,
 } = require('../utils/lead-links');
 
 test('link do Google nunca vira site da empresa', () => {
@@ -66,4 +71,72 @@ test('telefone perde glifos invisíveis do Maps', () => {
   assert.equal(normalizePhoneDisplay('\uE0B0 (21) 98765-0142'), '(21) 98765-0142');
   assert.equal(normalizePhoneDisplay('+55 21 98765-0142'), '+55 21 98765-0142');
   assert.equal(normalizePhoneDisplay('123'), '');
+});
+
+test('link-in-bio, marketplace e encurtador nunca viram site', () => {
+  assert.equal(normalizeWebsite('https://linktr.ee/cafe.aurora'), '');
+  assert.equal(normalizeWebsite('https://www.linktree.com/e/cafe'), '');
+  assert.equal(normalizeWebsite('https://bio.site/cafe'), '');
+  assert.equal(normalizeWebsite('https://beacons.ai/cafe'), '');
+  assert.equal(normalizeWebsite('https://ifood.com.br/loja/cafe'), '');
+  assert.equal(normalizeWebsite('https://bit.ly/cafe3'), '');
+  assert.equal(normalizeWebsite('https://tinyurl.com/cafe'), '');
+  assert.equal(normalizeWebsite('facebook.com/cafe.aurora'), '');
+  assert.equal(normalizeWebsite('https://www.youtube.com/@cafe'), '');
+});
+
+test('isRealWebsite é a decisão única de "tem site"', () => {
+  assert.equal(isRealWebsite('https://cafeaurora.com.br'), true);
+  assert.equal(isRealWebsite('cafeaurora.com.br'), true);
+  assert.equal(isRealWebsite('https://cafeaurora.com.br/?utm_source=gmaps'), true);
+  assert.equal(isRealWebsite('https://instagram.com/cafe.aurora'), false);
+  assert.equal(isRealWebsite('https://linktr.ee/cafe.aurora'), false);
+  assert.equal(isRealWebsite('https://ifood.com.br/loja'), false);
+  assert.equal(isRealWebsite('https://bit.ly/abc'), false);
+  assert.equal(isRealWebsite(''), false);
+});
+
+test('classificadores de categoria retornam true só para o tipo', () => {
+  assert.equal(isAggregatorUrl('https://linktr.ee/cafe'), true);
+  assert.equal(isAggregatorUrl('https://cafeaurora.com.br'), false);
+  assert.equal(isMarketplaceUrl('https://ifood.com.br/loja'), true);
+  assert.equal(isMarketplaceUrl('https://cafeaurora.com.br'), false);
+  assert.equal(isShortenerUrl('https://bit.ly/abc'), true);
+  assert.equal(isShortenerUrl('https://cafeaurora.com.br'), false);
+  assert.equal(isNonSiteUrl('https://google.com/maps'), true);
+  assert.equal(isNonSiteUrl('https://cafeaurora.com.br'), false);
+});
+
+test('normalizeLeadLinks descarta agregador do campo site', () => {
+  const result = normalizeLeadLinks({ website: 'https://linktr.ee/cafe.aurora', instagram: '' });
+  assert.equal(result.website, '');
+  assert.equal(result.instagram, '');
+});
+
+test('handle colado no campo site migra para Instagram em vez de virar site falso', () => {
+  const comPonto = normalizeLeadLinks({ website: '@cafe.aurora', instagram: '' });
+  assert.equal(comPonto.website, '');
+  assert.equal(comPonto.instagram, '@cafe.aurora');
+
+  // "@cafe.co" tem sufixo de domínio válido, mas o @ é handle explícito.
+  const comTld = normalizeLeadLinks({ website: '@cafe.co', instagram: '' });
+  assert.equal(comTld.website, '');
+  assert.equal(comTld.instagram, '@cafe.co');
+
+  // Domínio de verdade continua sendo site.
+  assert.equal(normalizeLeadLinks({ website: 'cafe.co' }).website, 'https://cafe.co/');
+});
+
+test('foto do CDN da rede social nunca vira site', () => {
+  assert.equal(normalizeWebsite('https://scontent.cdninstagram.com/v/t51/foto.jpg'), '');
+  assert.equal(normalizeWebsite('https://scontent.xx.fbcdn.net/v/foto.jpg'), '');
+  assert.equal(normalizeWebsite('https://media.licdn.com/dms/image/foto.png'), '');
+  assert.equal(isNonSiteUrl('https://scontent.cdninstagram.com/v/foto.jpg'), true);
+  assert.equal(isNonSiteUrl('https://loja.cafeaurora.com.br'), false);
+  assert.equal(normalizeWebsite('https://loja.cafeaurora.com.br/pedidos'), 'https://loja.cafeaurora.com.br/pedidos');
+});
+
+test('agregador colado no campo Instagram não vira handle', () => {
+  assert.equal(normalizeInstagram('https://linktr.ee/cafe'), '');
+  assert.equal(normalizeLeadLinks({ website: '', instagram: 'https://linktr.ee/cafe' }).instagram, '');
 });
