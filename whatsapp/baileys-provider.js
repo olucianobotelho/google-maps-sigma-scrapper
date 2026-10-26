@@ -1,6 +1,7 @@
 const { WhatsAppProvider } = require("./provider");
 const { AuthStore } = require("./auth-store");
 const { normalizePhone } = require("./phone-normalizer");
+const { isOggOpus } = require('../utils/audio-format');
 const fs = require("fs");
 const path = require("path");
 const { resolveContactIdentity } = require('./contact-identity-resolver');
@@ -1770,17 +1771,22 @@ class BaileysProvider extends WhatsAppProvider {
           return { success: false, error: "Áudio vazio (0 bytes) — grave de novo" };
         }
         p.audio = audioBuf;
-        // PTT exige ogg/opus; se vier webm, o convert no main deve ter rodado
+        // PTT exige ogg/opus. WebM chega ao destinatário como mensagem que
+        // não abre, então é melhor recusar do que enviar quebrado.
+        const ptt = content.ptt !== false;
         let mime = content.mimetype || "audio/ogg; codecs=opus";
-        if (/webm/i.test(mime) && content.ptt !== false) {
-          // WhatsApp PTT com webm costuma sair "zerado" — avisa
-          console.warn("[BAILEYS] enviando áudio webm como PTT — preferível ogg/opus");
+        if (ptt && !isOggOpus(mime)) {
+          return {
+            success: false,
+            error:
+              "Mensagem de voz precisa estar em ogg/opus — este áudio chegaria sem abrir no destinatário.",
+          };
         }
-        if (/ogg|opus/i.test(mime) && !/webm/i.test(mime)) {
+        if (isOggOpus(mime)) {
           mime = "audio/ogg; codecs=opus";
         }
         p.mimetype = mime;
-        p.ptt = content.ptt !== false;
+        p.ptt = ptt;
         if (Number.isFinite(content.seconds) && content.seconds > 0) {
           p.seconds = Math.round(content.seconds);
         }

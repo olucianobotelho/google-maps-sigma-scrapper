@@ -193,8 +193,8 @@ contextBridge.exposeInMainWorld("chatAPI", {
     ipcRenderer.invoke("whatsapp-labels-set-contact", { jid, tagIds }),
   sendMedia: (to, filePath, caption, connectionId) =>
     ipcRenderer.invoke("whatsapp-send-media", { to, filePath, caption, connectionId }),
-  sendAudio: (to, audioData, mimetype, connectionId) =>
-    ipcRenderer.invoke("whatsapp-send-audio", { to, audioData, mimetype, connectionId }),
+  sendAudio: (to, audioData, mimetype, connectionId, seconds) =>
+    ipcRenderer.invoke("whatsapp-send-audio", { to, audioData, mimetype, connectionId, seconds }),
   saveTriggerAudio: (payload) =>
     ipcRenderer.invoke("whatsapp-save-trigger-audio", payload || {}),
   deleteTriggerAudio: (filePath) =>

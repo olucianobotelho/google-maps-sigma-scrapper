@@ -18,10 +18,18 @@ app.commandLine.appendSwitch("disable-software-rasterizer");
 app.commandLine.appendSwitch("disable-http-cache");
 app.commandLine.appendSwitch("disk-cache-size", "1");
 
-let ffmpegPath = "ffmpeg";
+// ffmpeg-static vive dentro do asar, mas o executável só roda a partir de
+// app.asar.unpacked — sem isso a conversão de áudio falha no app instalado.
+const { resolveFfmpegPath } = require("./utils/ffmpeg-path");
+const { isOggOpus, isPlayableAudio, detectAudioMime } = require("./utils/audio-format");
+const { convertAudioToOggOpus } = require("./utils/audio-convert");
+
+let ffmpegModulePath = null;
 try {
-  ffmpegPath = require("ffmpeg-static") || "ffmpeg";
+  ffmpegModulePath = require("ffmpeg-static") || null;
 } catch (e) {}
+const ffmpegPath = resolveFfmpegPath({ modulePath: ffmpegModulePath });
+console.log("[AUDIO] ffmpeg:", ffmpegPath);
 const { scrapeGoogleMaps } = require("./scraper");
 const { saveToCSV } = require("./utils/csv");
 const { saveReport } = require("./utils/report");
@@ -2831,11 +2839,17 @@ ipcMain.handle("whatsapp-send-media", async (_, { to, filePath, caption, connect
     if (isImage) { content.image = buffer; content.mimetype = mimetype; }
     else if (isVideo) { content.video = buffer; content.mimetype = mimetype; }
     else if (isAudio) {
+      if (!isPlayableAudio(mimetype)) {
+        return {
+          success: false,
+          error: `O WhatsApp não reproduz ${ext || "este formato"} como áudio. Converta para mp3, m4a ou ogg/opus antes de enviar.`,
+        };
+      }
       content.audio = buffer;
       content.mimetype = mimetype;
       // .ogg/.opus e clips de gatilho em userData/trigger-audio → mensagem de voz (PTT)
       const isTriggerClip = /[\\/]trigger-audio[\\/]/i.test(mediaPath);
-      content.ptt = isTriggerClip || /audio\/(ogg|opus)/i.test(mimetype) || ext === ".ogg" || ext === ".opus";
+      content.ptt = isTriggerClip || isOggOpus(mimetype) || ext === ".ogg" || ext === ".opus";
     }
     else {
       content.document = buffer;
@@ -2848,89 +2862,6 @@ ipcMain.handle("whatsapp-send-media", async (_, { to, filePath, caption, connect
     return { success: false, error: e.message };
   }
 });
-
-function convertAudioToOggOpus(buffer, mimetype) {
-  const type = String(mimetype || "").toLowerCase();
-  // CUIDADO: "audio/webm;codecs=opus" contém "opus" mas NÃO é OGG — precisa converter!
-  // Só pular conversão se já for container ogg (ou pure audio/opus).
-  const alreadyOgg =
-    (type.includes("ogg") && !type.includes("webm")) ||
-    type === "audio/opus" ||
-    type.startsWith("audio/ogg");
-  if (alreadyOgg && Buffer.isBuffer(buffer) && buffer.length > 64) {
-    return Promise.resolve({ buffer, mimetype: "audio/ogg; codecs=opus" });
-  }
-  if (!Buffer.isBuffer(buffer) || buffer.length < 64) {
-    return Promise.resolve({ buffer: buffer || Buffer.alloc(0), mimetype: type || "audio/webm", error: "buffer_vazio" });
-  }
-  return new Promise((resolve) => {
-    let ext = ".webm";
-    if (type.includes("mp4") || type.includes("m4a") || type.includes("aac")) ext = ".m4a";
-    else if (type.includes("mpeg") || type.includes("mp3")) ext = ".mp3";
-    else if (type.includes("wav")) ext = ".wav";
-    else if (type.includes("ogg")) ext = ".ogg";
-    else ext = ".webm";
-
-    const base = path.join(
-      os.tmpdir(),
-      `sigma_audio_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    );
-    const input = `${base}${ext}`;
-    const output = `${base}.ogg`;
-    try {
-      fs.writeFileSync(input, buffer);
-      // Força mono 48k opus em container ogg (formato PTT do WhatsApp)
-      execFile(
-        ffmpegPath,
-        [
-          "-y",
-          "-i", input,
-          "-vn",
-          "-ac", "1",
-          "-ar", "48000",
-          "-c:a", "libopus",
-          "-b:a", "24k",
-          "-application", "voip",
-          output,
-        ],
-        { windowsHide: true, timeout: 45000 },
-        (err, _stdout, stderr) => {
-          try {
-            fs.unlinkSync(input);
-          } catch (e) {}
-          if (err) {
-            console.error("[AUDIO] ffmpeg falhou:", err.message, String(stderr || "").slice(0, 200));
-            try {
-              fs.unlinkSync(output);
-            } catch (e) {}
-            // Fallback: tenta enviar original (melhor que silêncio)
-            resolve({ buffer, mimetype: mimetype || "audio/webm", converted: false, error: err.message });
-            return;
-          }
-          try {
-            const converted = fs.readFileSync(output);
-            try { fs.unlinkSync(output); } catch (e) {}
-            if (!converted || converted.length < 64) {
-              console.error("[AUDIO] ffmpeg gerou arquivo vazio");
-              resolve({ buffer, mimetype: mimetype || "audio/webm", converted: false, error: "output_vazio" });
-              return;
-            }
-            resolve({
-              buffer: converted,
-              mimetype: "audio/ogg; codecs=opus",
-              converted: true,
-              bytes: converted.length,
-            });
-          } catch (e) {
-            resolve({ buffer, mimetype: mimetype || "audio/webm", converted: false, error: e.message });
-          }
-        },
-      );
-    } catch (e) {
-      resolve({ buffer, mimetype: mimetype || "audio/webm", converted: false, error: e.message });
-    }
-  });
-}
 
 function parseAudioPayload(audioData) {
   if (audioData == null) throw new Error("Áudio vazio");
@@ -2951,7 +2882,7 @@ function getTriggerAudioDir() {
 
 ipcMain.handle(
   "whatsapp-send-audio",
-  async (_, { to, audioData, mimetype, connectionId } = {}) => {
+  async (_, { to, audioData, mimetype, connectionId, seconds } = {}) => {
     const provider = resolveChatProvider(connectionId);
     if (!provider) return { success: false, error: "Not connected" };
     try {
@@ -2960,15 +2891,28 @@ ipcMain.handle(
       if (rawBuffer.length > MAX_AUDIO_BYTES) {
         throw new Error("Áudio excede o tamanho máximo (15 MB)");
       }
-      const audio = await convertAudioToOggOpus(rawBuffer, mimetype);
+      const detected = detectAudioMime(rawBuffer);
+      const audio = await convertAudioToOggOpus(rawBuffer, detected || mimetype, { ffmpegPath });
       if (!audio.buffer || audio.buffer.length < 64) {
         return { success: false, error: "Áudio inválido ou vazio após conversão. Grave de novo." };
       }
-      if (audio.error && !audio.converted) {
-        console.warn("[AUDIO] conversão incompleta:", audio.error, "mime=", audio.mimetype);
+      // Mensagem de voz exige ogg/opus. Enviar webm (fallback antigo) fazia a
+      // mensagem chegar e não abrir no aparelho do destinatário.
+      if (!isOggOpus(audio.mimetype)) {
+        console.warn("[AUDIO] conversão falhou:", audio.error, "mime=", audio.mimetype);
+        return {
+          success: false,
+          error: audio.error
+            ? `Não foi possível converter o áudio para ogg/opus (${audio.error}). Confira o ffmpeg e grave novamente.`
+            : "Áudio em formato não suportado pelo WhatsApp. Grave novamente ou use ogg/opus.",
+        };
       }
-      // Estima segundos pelo bitrate ~24kbps se não informado
-      const approxSec = Math.max(1, Math.round((audio.buffer.length * 8) / 24000));
+      // Prefere a duração real informada pelo renderer; senão estima pelo
+      // bitrate de codificação do PTT (48 kbps) mais os headers do container.
+      const providedSec = Number(seconds);
+      const approxSec = Number.isFinite(providedSec) && providedSec > 0
+        ? Math.round(providedSec)
+        : Math.max(1, Math.round((audio.buffer.length * 8) / 48000));
       return await provider.sendAudio(to, audio.buffer, audio.mimetype, approxSec);
     } catch (e) {
       return { success: false, error: e.message };
@@ -3004,7 +2948,15 @@ ipcMain.handle(
       if (rawBuffer.length > MAX_AUDIO_BYTES) {
         throw new Error("Áudio excede o tamanho máximo (15 MB)");
       }
-      const audio = await convertAudioToOggOpus(rawBuffer, srcMime);
+      const audio = await convertAudioToOggOpus(rawBuffer, detectAudioMime(rawBuffer) || srcMime, { ffmpegPath });
+      if (!isOggOpus(audio.mimetype)) {
+        return {
+          success: false,
+          error: audio.error
+            ? `Não foi possível converter o áudio do gatilho para ogg/opus (${audio.error}).`
+            : "Áudio do gatilho em formato não suportado. Use ogg/opus ou mp3.",
+        };
+      }
       const id = `aud_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const filePath = path.join(getTriggerAudioDir(), `${id}.ogg`);
       fs.writeFileSync(filePath, audio.buffer);
@@ -3095,12 +3047,20 @@ ipcMain.handle(
       }
       const raw = fs.readFileSync(resolved);
       if (!raw.length) throw new Error("Áudio vazio");
-      const audio = await convertAudioToOggOpus(raw, "audio/ogg");
+      // Clipes antigos foram salvos como .ogg mesmo sem conversão: o conteúdo
+      // real é detectado pelos bytes, não pela extensão.
+      const audio = await convertAudioToOggOpus(raw, detectAudioMime(raw) || "audio/ogg", { ffmpegPath });
       if (!audio.buffer || audio.buffer.length < 64) {
         return { success: false, error: "Arquivo de áudio do gatilho está vazio ou corrompido" };
       }
+      if (!isOggOpus(audio.mimetype)) {
+        return {
+          success: false,
+          error: "Este clipe não está em ogg/opus e não abriria no WhatsApp. Recrie o gatilho de áudio.",
+        };
+      }
       rememberAllowedMediaPath(resolved);
-      const approxSec = Math.max(1, Math.round((audio.buffer.length * 8) / 24000));
+      const approxSec = Math.max(1, Math.round((audio.buffer.length * 8) / 48000));
       const result = await provider.sendAudio(
         to,
         audio.buffer,

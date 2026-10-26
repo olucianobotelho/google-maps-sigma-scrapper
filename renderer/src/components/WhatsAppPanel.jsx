@@ -2035,6 +2035,7 @@ function WhatsAppPanel({ waStatus, setWaStatus, addLog }) {
             b64,
             mime,
             activeConnectionId,
+            durationSec,
           );
           await window.chatAPI.chatAction(toJid, 'paused', activeConnectionId).catch(() => {});
           if (res?.success) {
