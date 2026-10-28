@@ -26,6 +26,8 @@ const fixtureLeads = [
   { id: 'lead-2', searchId: 'search-odonto', name: 'Clínica Sorriso', category: 'Clínica odontológica', phone: '+55 21 97654-8890', website: 'https://clinicasorriso.com.br', address: 'Rua Visconde de Pirajá, 420, Ipanema', city: 'Rio de Janeiro', state: 'RJ', latitude: -22.9833, longitude: -43.2096, coordSource: 'meta' },
   { id: 'lead-3', searchId: 'search-academia', name: 'Academia Pulso', category: 'Academia', phone: '+55 11 95555-1000', instagram: '@academiapulso', address: 'Av. Paulista, 1200, Bela Vista', city: 'São Paulo', state: 'SP', latitude: -23.5616, longitude: -46.6559, coordSource: 'poi' },
   { id: 'lead-4', searchId: 'importados', name: 'Café Importado', category: 'Cafeteria', phone: '+55 11 94444-2000', city: 'São Paulo', state: 'SP' },
+  { id: 'lead-5', searchId: 'search-odonto', name: 'Studio Sorriso DF', category: 'Dentista', phone: '+55 61 93333-4000', website: 'https://linktr.ee/studiosorrisodf', address: 'SGAS 915, Asa Sul', city: 'Brasília', state: 'DF', latitude: -15.8344, longitude: -47.9136, coordSource: 'poi' },
+  { id: 'lead-6', searchId: 'search-academia', name: 'Barba e Cia', category: 'Barbearia', phone: '+55 11 92222-5000', website: 'https://www.instagram.com/barbaecia.sp/', address: 'Rua Augusta, 500, Consolação', city: 'São Paulo', state: 'SP', latitude: -23.5505, longitude: -46.6600, coordSource: 'meta' },
 ];
 const fixtureSearches = [
   { id: 'search-odonto', label: 'Dentistas · Rio de Janeiro', query: 'dentistas rio de janeiro', source: 'maps', timestamp: now - 120000 },
@@ -356,7 +358,10 @@ app.whenReady().then(async () => {
   });
 
   win.webContents.on('console-message', (_event, level, message) => {
-    if (level >= 3 && !/Electron Security Warning/i.test(message)) errors.push(message);
+    if (level >= 3 && !/Electron Security Warning/i.test(message)) {
+      console.log(`[renderer-error] ${message}`);
+      errors.push(message);
+    }
   });
   win.webContents.on('did-fail-load', (_event, code, description, url) => {
     errors.push(`FAIL_LOAD ${code} ${description} ${url}`);
@@ -375,6 +380,176 @@ app.whenReady().then(async () => {
   await win.reload();
   await pause(900);
   await win.webContents.insertCSS('*{animation:none!important;transition:none!important;scroll-behavior:auto!important}');
+
+  // Fluxo determinístico para validar a fila de lembretes da Visão Geral com
+  // volume realista: 30 entradas, chegada mais recente no topo e rolagem.
+  if (process.env.SIGMA_QA_NOTIFICATIONS_ONLY === '1') {
+    const notificationErrors = [];
+    const reminderFixture = Array.from({ length: 30 }, (_item, index) => ({
+      id: `qa-reminder-${index + 1}`,
+      key: `qa-reminder-key-${index + 1}`,
+      jid: `551199999${String(index + 1).padStart(4, '0')}@s.whatsapp.net`,
+      phone: `551199999${String(index + 1).padStart(4, '0')}`,
+      name: `Lembrete ${String(30 - index).padStart(2, '0')}`,
+      reminderAt: now + ((index + 1) * 86400000),
+      note: `Retorno de teste ${index + 1}`,
+      createdAt: now - (index * 1000),
+    }));
+    await win.webContents.executeJavaScript(`(() => {
+      localStorage.setItem('sigma_whatsapp_reminders', ${JSON.stringify(JSON.stringify(reminderFixture))});
+      window.dispatchEvent(new Event('sigma:reminders-updated'));
+    })()`);
+    await pause(240);
+    await win.webContents.executeJavaScript(`document.querySelector('.overview-crm-reminder')?.click()`);
+    await pause(240);
+    const notificationUi = await win.webContents.executeJavaScript(`(() => {
+      const trigger = document.querySelector('.overview-crm-reminder');
+      const popover = document.querySelector('#overview-pending-popover');
+      const list = popover?.querySelector('.overview-pending-popover-list');
+      const items = [...(list?.querySelectorAll('.overview-pending-popover-item') || [])];
+      const triggerRect = trigger?.getBoundingClientRect();
+      const popoverRect = popover?.getBoundingClientRect();
+      const style = popover ? getComputedStyle(popover) : null;
+      const listStyle = list ? getComputedStyle(list) : null;
+      return {
+        open: Boolean(popover),
+        count: items.length,
+        first: items[0]?.querySelector('b')?.textContent?.trim() || '',
+        last: items.at(-1)?.querySelector('b')?.textContent?.trim() || '',
+        opensDown: Boolean(triggerRect && popoverRect && popoverRect.top >= triggerRect.bottom),
+        notClipped: Boolean(popoverRect && popoverRect.top >= 0 && popoverRect.bottom <= window.innerHeight),
+        scrollable: Boolean(list && list.scrollHeight > list.clientHeight),
+        overflowY: listStyle?.overflowY || '',
+        containerOverflowY: style?.overflowY || '',
+        position: style?.position || '',
+        rect: popoverRect ? { top: Math.round(popoverRect.top), bottom: Math.round(popoverRect.bottom), height: Math.round(popoverRect.height) } : null,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      };
+    })()`);
+    if (!notificationUi.open || notificationUi.count !== 30 || notificationUi.first !== 'Lembrete 30' || notificationUi.last !== 'Lembrete 01' || !notificationUi.opensDown || !notificationUi.notClipped || !notificationUi.scrollable || !/auto|scroll/.test(notificationUi.overflowY) || notificationUi.position !== 'fixed') {
+      notificationErrors.push(`Visão Geral: fila de lembretes não ficou segura/ordenada ${JSON.stringify(notificationUi)}`);
+    }
+    await pause(280);
+    await win.webContents.executeJavaScript('new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    fs.writeFileSync(path.join(outputDir, 'lead-fixes-notifications-1440x900.png'), (await win.capturePage()).toPNG());
+    console.log(JSON.stringify({ outputDir, errors: [...errors, ...notificationErrors], scope: 'notifications-only', notificationUi }, null, 2));
+    win.destroy();
+    app.exit((errors.length || notificationErrors.length) ? 1 : 0);
+    return;
+  }
+
+  // Fluxo direcionado para as correções da Base/Scoring/Kanban solicitadas.
+  // Mantém a QA curta e determinística quando o harness completo de campanhas
+  // não é necessário.
+  if (process.env.SIGMA_QA_FIXES_ONLY === '1') {
+    const fixErrors = [];
+    await win.webContents.executeJavaScript(`localStorage.setItem('sigma_scgroup', 'group-demo'); location.hash = '#scoring';`);
+    await pause(520);
+    const scoringUi = await win.webContents.executeJavaScript(`(() => {
+      const line = document.querySelector('#scCfgLine')?.textContent || '';
+      const groupSelect = document.querySelector('#scGroupBtn');
+      const groupOptions = [...(groupSelect?.options || [])].map((option) => (option.textContent || '').trim());
+      return {
+        work: Boolean(document.querySelector('#scWork')),
+        groupOptions,
+        groupValue: groupSelect?.value || '',
+        configLine: line,
+        configurePrimary: document.querySelector('#scCfgBtn')?.classList.contains('btn-primary') || false,
+        actionLabel: document.querySelector('#scRunBtn')?.textContent?.trim() || '',
+        hasActionCount: Boolean(document.querySelector('#scRunN')),
+        hasBands: /Faixas|alta ≥|boa ≥|ignorar </.test(line),
+      };
+    })()`);
+    if (!scoringUi.work || !scoringUi.groupOptions.some((label) => /Odontologia/.test(label)) || scoringUi.groupValue !== 'group-demo') {
+      fixErrors.push(`Scoring: grupo não ficou selecionável ${JSON.stringify(scoringUi)}`);
+    }
+    if (!/\bIA\b/.test(scoringUi.configLine) || !/Foco/.test(scoringUi.configLine) || scoringUi.hasBands || !scoringUi.configurePrimary || scoringUi.hasActionCount || !/Analisar grupo|Pausar análise/.test(scoringUi.actionLabel)) {
+      fixErrors.push(`Scoring: hierarquia visual não foi simplificada ${JSON.stringify(scoringUi)}`);
+    }
+    fs.writeFileSync(path.join(outputDir, 'lead-fixes-scoring-1440x900.png'), (await win.capturePage()).toPNG());
+
+    await win.webContents.executeJavaScript(`location.hash = '#kanban';`);
+    await pause(760);
+    await win.webContents.executeJavaScript(`([...document.querySelectorAll('button')].find((node) => (node.textContent || '').includes('Adicionar lead manualmente')))?.click()`);
+    await pause(300);
+    await win.webContents.executeJavaScript(`([...document.querySelectorAll('.kanban-manual-source button')].find((node) => (node.textContent || '').includes('Escolher conversa')))?.click()`);
+    await pause(220);
+    const manualUi = await win.webContents.executeJavaScript(`(() => {
+      const modal = document.querySelector('.kanban-manual-lead-modal');
+      const selects = [...(modal?.querySelectorAll('.kanban-manual-lead-body select') || [])];
+      return {
+        open: Boolean(modal),
+        chatOptions: [...(selects[0]?.options || [])].filter((option) => option.value).length,
+        selectCount: selects.length,
+        contactInputs: modal?.querySelectorAll('.kanban-manual-lead-body .field input').length || 0,
+        submitDisabled: Boolean(modal?.querySelector('button[type="submit"]')?.disabled),
+      };
+    })()`);
+    if (!manualUi.open || manualUi.chatOptions < 1 || manualUi.selectCount < 2 || manualUi.contactInputs !== 0) {
+      fixErrors.push(`Kanban: escolha de conversa ainda exibe campos redundantes ${JSON.stringify(manualUi)}`);
+    }
+    fs.writeFileSync(path.join(outputDir, 'lead-fixes-manual-conversation-1440x900.png'), (await win.capturePage()).toPNG());
+
+    const moveResult = await win.webContents.executeJavaScript(`(() => {
+      const modal = document.querySelector('.kanban-manual-lead-modal');
+      const selects = [...(modal?.querySelectorAll('.kanban-manual-lead-body select') || [])];
+      const setValue = (node, value) => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+        setter.call(node, value);
+        node.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      const chat = [...(selects[0]?.options || [])].find((option) => option.value);
+      const stage = [...(selects[1]?.options || [])].find((option) => option.value && option.value !== selects[1]?.value);
+      if (!modal || !chat || !stage) return { ok: false, reason: 'opção de conversa/etapa ausente' };
+      setValue(selects[0], chat.value);
+      setValue(selects[1], stage.value);
+      return { ok: true, chat: chat.textContent?.trim() || '', stage: stage.value };
+    })()`);
+    await pause(180);
+    const selectionState = await win.webContents.executeJavaScript(`(() => {
+      const modal = document.querySelector('.kanban-manual-lead-modal');
+      const selects = [...(modal?.querySelectorAll('.kanban-manual-lead-body select') || [])];
+      return {
+        chatValue: selects[0]?.value || '',
+        stageValue: selects[1]?.value || '',
+        submitDisabled: Boolean(modal?.querySelector('button[type="submit"]')?.disabled),
+        error: modal?.querySelector('[role="alert"]')?.textContent || '',
+      };
+    })()`);
+    await win.webContents.executeJavaScript(`document.querySelector('.kanban-manual-lead-modal button[type="submit"]')?.click()`);
+    await pause(950);
+    const moveCheck = moveResult?.ok ? await win.webContents.executeJavaScript(`(() => {
+      const cards = [...document.querySelectorAll('.kanban-card')];
+      const card = cards.find((node) => /Odonto Lume/.test(node.querySelector('.kanban-card-title strong')?.textContent || ''));
+      return {
+        modalClosed: !document.querySelector('.kanban-manual-lead-modal'),
+        movedValue: card?.querySelector('.kanban-card-move select')?.value || '',
+        notice: document.querySelector('.kanban-feedback.success')?.textContent || '',
+        error: document.querySelector('.kanban-manual-lead-modal [role="alert"]')?.textContent || '',
+      };
+    })()`) : { modalClosed: false, movedValue: '', notice: '' };
+    if (!moveResult?.ok || selectionState.submitDisabled || !moveCheck.modalClosed || moveCheck.movedValue !== moveResult.stage) {
+      fixErrors.push(`Kanban: conversa não foi movida para a etapa escolhida ${JSON.stringify({ moveResult, selectionState, moveCheck })}`);
+    }
+
+    const report = {
+      generatedAt: new Date().toISOString(),
+      version: require('../package.json').version,
+      scope: 'lead-fixes-only',
+      scoringUi,
+      manualUi,
+      moveResult,
+      selectionState,
+      moveCheck,
+      errors: fixErrors,
+      passed: fixErrors.length === 0,
+    };
+    fs.writeFileSync(path.join(outputDir, 'lead-fixes-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+    console.log(JSON.stringify({ outputDir, ...report }, null, 2));
+    win.destroy();
+    app.exit(fixErrors.length ? 1 : 0);
+    return;
+  }
 
   for (const route of ['overview', 'scraper', 'base', 'scoring', 'kanban', 'whatsapp', 'dashboard', 'settings']) {
     await win.webContents.executeJavaScript(`location.hash = '#${route}'; window.dispatchEvent(new HashChangeEvent('hashchange'));`);
@@ -459,6 +634,7 @@ app.whenReady().then(async () => {
   await pause(140);
   await win.webContents.executeJavaScript(`(() => {
     const input = document.querySelector('#wzNicho');
+    if (!input) return;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     setter.call(input, 'Dentistas');
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -467,12 +643,18 @@ app.whenReady().then(async () => {
   await pause(140);
   await win.webContents.executeJavaScript(`(() => {
     const input = document.querySelector('#wzCidade');
+    if (!input) return;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     setter.call(input, 'DF');
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   await pause(140);
-  const dfSuggestion = await win.webContents.executeJavaScript(`(() => [...document.querySelectorAll('.ac-item')].map((node) => node.textContent || '').some((text) => text.includes('Distrito Federal') && text.includes('DF')))()`);
+  let dfSuggestion = false;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    dfSuggestion = await win.webContents.executeJavaScript(`(() => [...document.querySelectorAll('.ac-item')].map((node) => node.textContent || '').some((text) => text.includes('Distrito Federal') && text.includes('DF')))()`);
+    if (dfSuggestion) break;
+    await pause(200);
+  }
   if (!dfSuggestion) errors.push('Nova extração: Distrito Federal (DF) não apareceu nas sugestões');
   fs.writeFileSync(path.join(outputDir, 'nova-extracao-df-1440x900.png'), (await win.capturePage()).toPNG());
   await win.webContents.executeJavaScript(`([...document.querySelectorAll('.ac-item')].find((node) => (node.textContent || '').includes('Distrito Federal') && (node.textContent || '').includes('DF')))?.click()`);
@@ -480,6 +662,7 @@ app.whenReady().then(async () => {
   for (const neighborhood of ['Asa Sul', 'Asa Norte']) {
     await win.webContents.executeJavaScript(`(() => {
       const input = document.querySelector('#wzBairro');
+      if (!input) return;
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       setter.call(input, ${JSON.stringify(neighborhood)});
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -646,14 +829,14 @@ app.whenReady().then(async () => {
   await navigateTo('lead scoring');
   // O grupo criado na Base precisa estar listado aqui, com membros reais.
   const scoringGroupList = await win.webContents.executeJavaScript(`(() => {
-    const select = document.querySelector('#scGroupPick, .ls-open-design-step select');
+    const select = document.querySelector('#scGroupPick, #scGroupBtn, .ls-open-design-step select');
     const options = [...(select?.options || [])].map((option) => ({ value: option.value, label: (option.textContent || '').trim() }));
     return { options, hasGroup: options.some((option) => /QA sem site/.test(option.label)) };
   })()`);
   if (!scoringGroupList.hasGroup) {
     errors.push(`Lead scoring: grupo da base não apareceu na lista ${JSON.stringify(scoringGroupList.options)}`);
   }
-  await win.webContents.executeJavaScript(`(() => { const select = document.querySelector('#scGroupPick, .ls-open-design-step select'); const option = [...(select?.options || [])].find((item) => item.value); if (select && option) { select.value = option.value; select.dispatchEvent(new Event('change', { bubbles: true })); } })()`);
+  await win.webContents.executeJavaScript(`(() => { const select = document.querySelector('#scGroupPick, #scGroupBtn, .ls-open-design-step select'); const option = [...(select?.options || [])].find((item) => item.value); if (select && option) { select.value = option.value; select.dispatchEvent(new Event('change', { bubbles: true })); } })()`);
   await pause(180);
   const scoringRows = await win.webContents.executeJavaScript(`(() => {
     const rows = [...document.querySelectorAll('#scResults tbody tr')];
@@ -668,9 +851,20 @@ app.whenReady().then(async () => {
     fields: document.querySelectorAll('#scRules .sc-rule-field').length,
     highFrom: document.querySelector('#scRules .sc-rule-field input')?.value || '',
     autoToggle: Boolean(document.querySelector('.sc-toggle input')),
-    thresholdsLine: document.querySelector('#scCfgLine')?.textContent || '',
+    configLine: document.querySelector('#scCfgLine')?.textContent || '',
+    configurePrimary: document.querySelector('#scCfgBtn')?.classList.contains('btn-primary') || false,
+    actionLabel: document.querySelector('#scRunBtn')?.textContent?.trim() || '',
   }))()`);
-  if (scoreRules.fields < 6 || scoreRules.highFrom !== '75' || !scoreRules.autoToggle || !/alta ≥ 75/.test(scoreRules.thresholdsLine)) {
+  if (
+    scoreRules.fields < 6
+    || scoreRules.highFrom !== '75'
+    || !scoreRules.autoToggle
+    || !/\bIA\b/.test(scoreRules.configLine)
+    || !/\bFoco\b/.test(scoreRules.configLine)
+    || /alta ≥|boa ≥|ignorar </.test(scoreRules.configLine)
+    || !scoreRules.configurePrimary
+    || !/Analisar grupo|Pausar análise/.test(scoreRules.actionLabel)
+  ) {
     errors.push(`Lead scoring: regras do score incompletas ${JSON.stringify(scoreRules)}`);
   }
   await captureModal('detalhe-scoring-modal', `document.querySelector('#scResults tbody td b')?.click();`, '.overlay.on');
@@ -1074,6 +1268,13 @@ app.whenReady().then(async () => {
   console.log(JSON.stringify({ outputDir, ...report }, null, 2));
   win.destroy();
   app.exit(errors.length ? 1 : 0);
+}).catch((error) => {
+  console.error('[fatal]', error && error.stack ? error.stack : error);
+  try {
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(path.join(outputDir, 'qa-report.json'), `${JSON.stringify({ generatedAt: new Date().toISOString(), fatal: String((error && error.stack) || error), passed: false, errors }, null, 2)}\n`);
+  } catch {}
+  app.exit(1);
 });
 
 app.on('window-all-closed', () => app.quit());

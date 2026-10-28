@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-09T23:35:17.282Z",
+  "generatedAt": "2026-09-11T16:21:29.765Z",
   "desktopOnly": true,
   "reference": "sigma-gmaps-lote1-prototype.html",
   "expectedPairs": 22,
@@ -15,7 +15,7 @@
       "name": "overview",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 87.25
+      "pixelSimilarityDiagnostic": 86.99
     },
     {
       "type": "route",
@@ -29,7 +29,7 @@
       "name": "base",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 84.52
+      "pixelSimilarityDiagnostic": 84.95
     },
     {
       "type": "route",
@@ -43,7 +43,7 @@
       "name": "whatsapp",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 84.28
+      "pixelSimilarityDiagnostic": 84.27
     },
     {
       "type": "route",
@@ -57,63 +57,63 @@
       "name": "settings",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 87.3
+      "pixelSimilarityDiagnostic": 87.01
     },
     {
       "type": "modal",
       "name": "busca-global-modal",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 91.19
+      "pixelSimilarityDiagnostic": 91.09
     },
     {
       "type": "modal",
       "name": "nova-extracao-modal",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 86.77
+      "pixelSimilarityDiagnostic": 85.51
     },
     {
       "type": "modal",
       "name": "exportar-leads-modal",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 88.46
+      "pixelSimilarityDiagnostic": 88.47
     },
     {
       "type": "modal",
       "name": "criar-grupo-modal",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 87.56
+      "pixelSimilarityDiagnostic": 82.92
     },
     {
       "type": "modal",
       "name": "adicionar-grupo-modal",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 87.13
+      "pixelSimilarityDiagnostic": 85.63
     },
     {
       "type": "modal",
       "name": "detalhe-lead-modal",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 88.77
+      "pixelSimilarityDiagnostic": 88.61
     },
     {
       "type": "modal",
       "name": "configurar-ia-modal",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 90.11
+      "pixelSimilarityDiagnostic": 88.85
     },
     {
       "type": "modal",
       "name": "detalhe-scoring-modal",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 78.43
+      "pixelSimilarityDiagnostic": 78.1
     },
     {
       "type": "modal",
@@ -127,7 +127,7 @@
       "name": "nova-campanha-modal",
       "dimensions": "1920x1020",
       "sameDimensions": true,
-      "pixelSimilarityDiagnostic": 88.3
+      "pixelSimilarityDiagnostic": 88.01
     },
     {
       "type": "modal",

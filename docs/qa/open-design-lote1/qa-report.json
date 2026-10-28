@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-09-11T05:01:38.382Z",
-  "version": "1.1.8",
+  "generatedAt": "2026-09-22T23:01:14.016Z",
+  "version": "1.2.0",
   "desktopOnly": true,
-  "viewport": "2160x1350",
+  "viewport": "2880x1620",
   "routes": 8,
   "modals": 18,
   "controlledErrorScenarios": 4,
@@ -98,15 +98,80 @@
         "width": 832,
         "height": 795
       },
-      "mapMarkers": 3,
+      "mapMarkers": 5,
       "chatShell": null,
       "chatList": null,
       "chatRoom": null
+    },
+    {
+      "requested": "1920x1080",
+      "route": "whatsapp",
+      "viewport": "1920x1080",
+      "scrollWidth": 1920,
+      "noGlobalHorizontalOverflow": true,
+      "windowControls": 3,
+      "windowControlDetails": [
+        {
+          "x": 1801,
+          "y": 14,
+          "width": 28,
+          "height": 28,
+          "color": "rgb(110, 110, 110)",
+          "opacity": "1",
+          "iconWidth": 13,
+          "iconHeight": 13
+        },
+        {
+          "x": 1829,
+          "y": 14,
+          "width": 28,
+          "height": 28,
+          "color": "rgb(110, 110, 110)",
+          "opacity": "1",
+          "iconWidth": 11,
+          "iconHeight": 11
+        },
+        {
+          "x": 1857,
+          "y": 14,
+          "width": 28,
+          "height": 28,
+          "color": "rgb(110, 110, 110)",
+          "opacity": "1",
+          "iconWidth": 13,
+          "iconHeight": 13
+        }
+      ],
+      "kanbanColumns": 0,
+      "map": null,
+      "mapMarkers": 0,
+      "chatShell": {
+        "width": 1681,
+        "height": 963
+      },
+      "chatList": {
+        "width": 538,
+        "height": 963
+      },
+      "chatRoom": {
+        "width": 1143,
+        "height": 963
+      }
     }
   ],
   "errors": [
-    "Modal não abriu: importar-leads-modal",
-    "Base: prévia XLSX inválida {\"open\":false,\"text\":\"\"}"
+    "Error: Error invoking remote method 'campaign-recovery-list': Error: No handler registered for 'campaign-recovery-list'",
+    "Nova extração: Distrito Federal (DF) não apareceu nas sugestões",
+    "Scraper: ícone de detalhes da extração não apareceu",
+    "Scraper: detalhe por bairro inválido {\"open\":false,\"found\":\"\",\"text\":\"\",\"liveFeed\":\"\",\"liveCard\":\"\"}",
+    "Scraper: lead ao vivo ou logs em português inválidos {\"open\":false,\"found\":\"\",\"text\":\"\",\"liveFeed\":\"\",\"liveCard\":\"\"}",
+    "Base: prévia XLSX inválida {\"open\":false,\"text\":\"\"}",
+    "Lead scoring: regras do score incompletas {\"fields\":8,\"highFrom\":\"75\",\"autoToggle\":true,\"configLine\":\"IA · muse-spark-1.3-contributor-freeFoco · Venda de Sites\",\"configurePrimary\":true,\"actionLabel\":\"Analisar grupo\"}",
+    "Kanban geral: venda não foi salva pela interface {\"notice\":\"Σ\\nSigma Scraper\\nGMaps\\n+\\nNova Extração\\nPAINEL ADMINISTRATIVO\\nVisão Geral\\n1\\nScraper Maps\\n2\\nBase de Leads\\n3\\nLead Scoring\\n4\\nKanban\\n5\\nWhatsApp\\n6\\nConfigurações\\n1 WhatsApp online\\nPIPELINE COMERCIAL\\nKanban\\n\\nTodos os leads conectados às suas fontes, em um único funil.\\n\\nAtualizar\\nHistórico (7)\\nReaplicar regras\\nAdicionar lead manualmente\\nConfigurar Kanban\\nTodos os leads\\nPrioridade alta (score ≥ 75)\\nCom telefone\\nMovidos manualmente\\n6 leads visíveleis · 6 regra(s) ativa(s)\\nHistórico do Kanban\\nmovimentos, sincronizações, vendas e configurações\\nKanban configurado: 7 etapas, 6 regras\\nagora\\nCard movido manualmente para Abordados\\nagora\\n6 lead(s) sincronizados de maps\\nagora\\n0 lead(s) sincronizados de maps · 6 removido(s)\\n1 min\\n3 lead(s) sincronizados de campaign\\n1 min\\n2 lead(s) sincronizados de scoring\\n1 min\\n6 lead(s) sincronizados de maps\\n1 min\\nKanban salvo.\\nNovos\\n5\\nClínica Sorriso\\nOdontologia\\nRio de Janeiro\\n0\\nBaixa\\nMaps\\nMover Clínica Sorriso para\\nNovos\\nAbordados\\nResponderam\\nQualificados\\nProposta\\nVendeu\\nRecusou\\nAcademia Pulso\\nAcademia\\nSão Paulo\\n0\\nBaixa\\nMaps\\nMover Academia Pulso para\\nNovos\\nAbordados\\nResponderam\\nQualificados\\nProposta\\nVendeu\\nRecusou\\nCafé Importado\\nCafeteria\\nSão Paulo\\n0\\nBaixa\\nMaps\\nMover Café Importado para\\nNovos\\nAbordados\\nResponderam\\nQualificados\\nProposta\\nVendeu\\nRecusou\\nStudio Sorriso DF\\nOdontologia\\nBrasília\\n0\\nBaixa\\nMaps\\nMover Studio Sorriso DF para\\nNovos\\nAbordados\\nResponderam\\nQualificados\\nProposta\\nVendeu\\nRecusou\\nBarba e Cia\\nBarbearia\\nSão Paulo\\n0\\nBaixa\\nMaps\\nMover Barba e Cia para\\nNovos\\nAbordados\\nResponderam\\nQualificados\\nProposta\\nVendeu\\nRecusou\\nAbordados\\n1\\nOdonto Lume\\nMANUAL\\nOdontologia\\nRio de Janeiro\\n0\\nBaixa\\nMaps\\nMover Odonto Lume para\\nNovos\\nAbordados\\nResponderam\\nQualificados\\nProposta\\nVendeu\\nRecusou\\nResponderam\\n0\\nArraste um lead para esta etapa\\nQualificados\\n0\\nArraste um lead para esta etapa\\nProposta\\n0\\nArraste um lead para esta etapa\\nVendeu\\nFINAL\\n0\\nArraste um lead para esta etapa\\nRecusou\\nFINAL\\n0\\nArraste um lead para esta etapa\\nLEAD NO KANBAN\\nClínica Sorriso\\n5521976548890\\nSem e-mail\\nRio de Janeiro · RJ\\nOdontologia\\nScore\\n0\\nBaixa\\nMensagem recebida\\n01/01/2000, 00:00\\nResposta recebida\\n01/01/2000, 00:00\\nMover para\\nNovos\\nAbordados\\nResponderam\\nQualificados\\nProposta\\nVendeu\\nRecusou\\nResultado comercial\\nO valor vendido entra na Visão Geral.\\nStatus\\nEm negociação\\nVendeu\\nRecusou\\nValor do negócio (R$)\\nObservação (opcional)\\nLembrete\\nAparece com um sino na Visão Geral.\\nData e hora\\n+ 7 dias\\nAssunto (opcional)\\nFontes\\nMaps\\nVer na base\\nFechar\\nSalvar alterações\",\"outcome\":\"won\",\"value\":\"1250,50\"}",
+    "Visão Geral: receita da venda não apareceu {\"present\":false,\"text\":\"\"}",
+    "Error: Error invoking remote method 'campaign-recovery-list': Error: No handler registered for 'campaign-recovery-list'",
+    "Error: Error invoking remote method 'campaign-recovery-list': Error: No handler registered for 'campaign-recovery-list'",
+    "Error: Error invoking remote method 'campaign-recovery-list': Error: No handler registered for 'campaign-recovery-list'"
   ],
   "passed": false
 }

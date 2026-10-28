@@ -8,8 +8,8 @@ const {
   normalizeInstagram,
   normalizeLeadLinks,
   normalizePhoneDisplay,
-  isSocialUrl,
-  isAggregatorUrl,
+  isRealWebsite,
+  isNonSiteUrl,
 } = require('./utils/lead-links');
 
 function normalizePlaceText(place = {}) {
@@ -182,7 +182,7 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
 
           // E-mail só faz sentido em site próprio: rede social e agregador não
           // expõem contato da empresa de forma confiável.
-          if (place.website && !isSocialUrl(place.website) && !isAggregatorUrl(place.website)) {
+          if (place.website && !isNonSiteUrl(place.website)) {
             checkCancelled(cancelToken);
             place.email = await scrapeEmails(browser, place.website, onProgress, cancelToken);
           } else {
@@ -192,7 +192,7 @@ async function scrapeGoogleMaps(searchQuery, maxResults = 999, onProgress = cons
           places.push(place);
 
           if (place.phone) statistics.withPhone++;
-          if (place.website) statistics.withWebsite++;
+          if (isRealWebsite(place.website)) statistics.withWebsite++;
           if (place.instagram) statistics.withInstagram++;
           if (place.email) statistics.withEmail++;
           if (place.rating) statistics.withRating++;

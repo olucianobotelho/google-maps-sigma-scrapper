@@ -1,6 +1,6 @@
 const SOCIAL = {
-  instagram: ['instagram.com'],
-  facebook: ['facebook.com', 'fb.com', 'm.facebook.com'],
+  instagram: ['instagram.com', 'instagr.am'],
+  facebook: ['facebook.com', 'fb.com', 'fb.me', 'm.facebook.com'],
   tiktok: ['tiktok.com'],
   linkedin: ['linkedin.com'],
   x: ['x.com', 'twitter.com'],
@@ -12,8 +12,9 @@ const SOCIAL = {
 const CATEGORIES = {
   social: SOCIAL,
   link_aggregator: {
-    linktree: ['linktr.ee'], beacons: ['beacons.ai'], bio_site: ['bio.site'],
-    campsite: ['campsite.bio'], taplink: ['taplink.cc'],
+    linktree: ['linktr.ee', 'linktree.com'], beacons: ['beacons.ai'], bio_site: ['bio.site'],
+    bio_link: ['bio.link'], campsite: ['campsite.bio'], taplink: ['taplink.cc'],
+    lnk_bio: ['lnk.bio'], linkin_bio: ['linkin.bio'], allmylinks: ['allmylinks.com'],
   },
   marketplace: {
     ifood: ['ifood.com.br'], getninjas: ['getninjas.com.br'], doctoralia: ['doctoralia.com.br'],
@@ -22,6 +23,7 @@ const CATEGORIES = {
   free_builder: {
     wix: ['wixsite.com'], wordpress: ['wordpress.com'], blogspot: ['blogspot.com', 'blogspot.com.br'],
     google_sites: ['sites.google.com'], canva: ['canva.site'], webnode: ['webnode.page', 'webnode.com'],
+    carrd: ['carrd.co'],
   },
   shortener: {
     bitly: ['bit.ly'], tinyurl: ['tinyurl.com'], tco: ['t.co'], isgd: ['is.gd'],

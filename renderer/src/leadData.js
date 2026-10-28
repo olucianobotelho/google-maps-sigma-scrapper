@@ -7,6 +7,8 @@ export function readLocalArray(key) {
   }
 }
 
+import { isRealWebsite } from './leadLinks.mjs';
+
 // Espelha o normalizador do processo principal para recuperar registros já
 // persistidos no navegador antes da correção do scraper.
 export function normalizeLeadAddress(value) {
@@ -192,7 +194,7 @@ export function getLeadStats(leads = []) {
   return {
     total: leads.length,
     phoneCount: leads.filter((lead) => lead?.phone || lead?.tel || lead?.whatsapp).length,
-    webCount: leads.filter((lead) => lead?.website || lead?.site).length,
+    webCount: leads.filter((lead) => isRealWebsite(lead?.website || lead?.site)).length,
     igCount: leads.filter((lead) => lead?.instagram || lead?.ig).length,
     emailCount: leads.filter((lead) => lead?.email || lead?.mail).length,
   };

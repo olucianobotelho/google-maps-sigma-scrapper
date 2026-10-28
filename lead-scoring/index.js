@@ -3,6 +3,7 @@ const { normalizeLead } = require("./normalizer");
 const { analyzeWebsite } = require("./site-crawler");
 const { calculateScore, classify, buildReasons } = require("./scoring-engine");
 const { analyzeWithSalesAI, analyzeBatchWithSalesAI, testProviderConnection } = require("./ai-sales-analyzer");
+const { isRealWebsite } = require("../utils/lead-links");
 
 class LeadScoringService {
   constructor(userDataPath, onProgress = () => {}) {
@@ -16,7 +17,7 @@ class LeadScoringService {
   /** Sem site próprio não há o que avaliar: regra global, salvo opt-out explícito. */
   _shouldSkipNoWebsite(normalized, options = {}) {
     if (options.skipNoWebsite === false) return false;
-    return !normalized?.company?.website;
+    return !isRealWebsite(normalized?.company?.website);
   }
 
   _noWebsiteError(normalized) {

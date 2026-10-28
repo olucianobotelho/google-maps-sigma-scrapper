@@ -5,6 +5,7 @@ const {
   emptyStats,
   defaultLeadTrackingFields,
 } = require('./campaign-analytics');
+const { normalizeLeadLinks } = require('../utils/lead-links');
 
 const KANBAN_STAGES = new Set(['new', 'conversation', 'finished']);
 
@@ -126,9 +127,9 @@ class CampaignStore {
           connectionId: assigned || null,
           company: lid.company || '',
           category: lid.category || '',
-          website: lid.website || '',
-          site: lid.website || lid.site || '',
-          instagram: lid.instagram || '',
+          website: normalizeLeadLinks(lid).website,
+          site: normalizeLeadLinks(lid).website,
+          instagram: normalizeLeadLinks(lid).instagram || lid.instagram || '',
           email: lid.email || '',
           address: lid.address || '',
           rating: lid.rating || '',

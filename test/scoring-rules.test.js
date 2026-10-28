@@ -71,3 +71,20 @@ test('patch parcial de regras não apaga ajustes já salvos', () => {
   assert.equal(second.rules.thresholds.highFrom, 90);
   assert.equal(second.rules.digitalPain.noWebsitePoints, DEFAULT_RULES.digitalPain.noWebsitePoints);
 });
+
+test('Linktree/Instagram no campo website contam como sem site no score', () => {
+  const linktreeLead = { company: { ...COMPANY, website: 'https://linktr.ee/clinica.teste' } };
+  const instagramLead = { company: { ...COMPANY, website: 'https://instagram.com/clinica.teste' } };
+  const noSiteLead = { company: { ...COMPANY, website: '' } };
+
+  const linktreeScore = calculateScore(linktreeLead, {});
+  const instagramScore = calculateScore(instagramLead, {});
+  const noSiteScore = calculateScore(noSiteLead, {});
+
+  assert.equal(linktreeScore.components.digitalPain, noSiteScore.components.digitalPain);
+  assert.equal(instagramScore.components.digitalPain, noSiteScore.components.digitalPain);
+  assert.ok(noSiteScore.components.digitalPain >= DEFAULT_RULES.digitalPain.noWebsitePoints);
+
+  const realSiteScore = calculateScore({ company: COMPANY }, WEAK_SITE);
+  assert.ok(realSiteScore.components.conversionPotential > noSiteScore.components.conversionPotential);
+});

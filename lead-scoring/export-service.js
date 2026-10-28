@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { normalizeWebsite } = require("../utils/lead-links");
 
 function saveProspectingCSV(leads, filename) {
   const rows = (leads || []).map((lead) => ({
@@ -9,7 +10,7 @@ function saveProspectingCSV(leads, filename) {
     telefone: lead.company?.phone || "",
     whatsapp: lead.company?.whatsapp || "",
     email: lead.company?.email || "",
-    site: lead.company?.website || "",
+    site: normalizeWebsite(lead.company?.website),
     instagram: lead.company?.instagram || "",
     nota_google: lead.company?.rating || "",
     avaliacoes: lead.company?.reviewCount || lead.company?.totalReviews || "",

@@ -218,22 +218,24 @@ function ManualLeadModal({ columns, chats, onClose, onSave, busy }) {
   const selectedChat = chats.find((chat) => chat.jid === chatJid) || null;
   const selectedColumn = columns.find((column) => column.id === columnId) || columns[0] || null;
 
-  useEffect(() => {
-    if (source !== 'whatsapp' || !selectedChat) return;
-    setName(selectedChat.name || '');
-    setPhone(selectedChat.phone || selectedChat.jid?.replace(/@.*$/, '') || '');
-  }, [source, selectedChat]);
-
   const submit = (event) => {
     event.preventDefault();
-    const normalizedPhone = phoneDigits(phone);
+    if (source === 'whatsapp' && !selectedChat) {
+      setError('Escolha uma conversa do WhatsApp para continuar.');
+      return;
+    }
+    const selectedPhone = source === 'whatsapp'
+      ? selectedChat?.phone || selectedChat?.jid?.replace(/@.*$/, '') || ''
+      : phone;
+    const selectedName = source === 'whatsapp' ? selectedChat?.name || '' : name;
+    const normalizedPhone = phoneDigits(selectedPhone);
     if (normalizedPhone.length < 8) {
       setError('Digite um telefone válido com pelo menos 8 números.');
       return;
     }
     setError('');
     onSave({
-      name: name.trim() || normalizedPhone,
+      name: selectedName.trim() || normalizedPhone,
       phone: normalizedPhone,
       columnId: selectedColumn?.id || columns[0]?.id,
       dealOutcome: selectedColumn?.dealOutcome || null,
@@ -253,26 +255,27 @@ function ManualLeadModal({ columns, chats, onClose, onSave, busy }) {
             <button type="button" className={source === 'manual' ? 'active' : ''} onClick={() => setSource('manual')}><Phone size={14} /> Digitar telefone</button>
             <button type="button" className={source === 'whatsapp' ? 'active' : ''} onClick={() => setSource('whatsapp')}><MessageCircle size={14} /> Escolher conversa</button>
           </div>
-          {source === 'whatsapp' ? (
-            <label className="field"><span>Conversa do WhatsApp</span><select value={chatJid} onChange={(event) => setChatJid(event.target.value)} required={chats.length > 0}>
-              <option value="">Selecione uma conversa</option>
-              {chats.map((chat) => <option key={chat.jid} value={chat.jid}>{chat.name || chat.phone || chat.jid} {chat.phone ? `· ${chat.phone}` : ''}</option>)}
-            </select></label>
-          ) : null}
-          <div className="kanban-manual-lead-grid">
-            <label className="field"><span>Nome do lead</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Clínica Central" /></label>
-            <label className="field"><span>Telefone</span><input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Ex.: (21) 99999-0000" inputMode="tel" readOnly={source === 'whatsapp' && !!selectedChat} /></label>
-          </div>
-          <div className="kanban-manual-lead-grid">
-            <label className="field"><span>Etapa inicial</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
-            {selectedColumn?.dealOutcome ? <label className="field"><span>Valor do negócio (opcional)</span><input value={dealValue} onChange={(event) => setDealValue(event.target.value)} placeholder="$$$" inputMode="decimal" /></label> : <div />}
-          </div>
-          {source === 'whatsapp' && !chats.length ? <p className="kanban-manual-empty">Nenhuma conversa disponível. Digite o telefone para continuar.</p> : null}
-          {error ? <p className="kanban-deal-error" role="alert">{error}</p> : null}
-        </div>
-        <footer className="kanban-modal-foot"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Adicionando…' : 'Adicionar ao Kanban'}</button></footer>
-      </form>
-    </div>
+           {source === 'whatsapp' ? (
+             <label className="field"><span>Conversa do WhatsApp</span><select value={chatJid} onChange={(event) => setChatJid(event.target.value)} required={chats.length > 0}>
+               <option value="">Selecione uma conversa</option>
+               {chats.map((chat) => <option key={chat.jid} value={chat.jid}>{chat.name || chat.phone || chat.jid} {chat.phone ? `· ${chat.phone}` : ''}</option>)}
+             </select></label>
+           ) : (
+             <div className="kanban-manual-lead-grid">
+               <label className="field"><span>Nome do lead</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Clínica Central" /></label>
+               <label className="field"><span>Telefone</span><input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Ex.: (21) 99999-0000" inputMode="tel" /></label>
+             </div>
+           )}
+           <div className="kanban-manual-lead-grid">
+             <label className="field"><span>Etapa inicial</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
+             {source === 'manual' && selectedColumn?.dealOutcome ? <label className="field"><span>Valor do negócio (opcional)</span><input value={dealValue} onChange={(event) => setDealValue(event.target.value)} placeholder="$$$" inputMode="decimal" /></label> : <div />}
+           </div>
+           {source === 'whatsapp' && !chats.length ? <p className="kanban-manual-empty">Nenhuma conversa disponível. Volte para “Digitar telefone” para continuar.</p> : null}
+           {error ? <p className="kanban-deal-error" role="alert">{error}</p> : null}
+         </div>
+         <footer className="kanban-modal-foot"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={busy || (source === 'whatsapp' && !selectedChat)}>{busy ? 'Adicionando…' : 'Adicionar ao Kanban'}</button></footer>
+       </form>
+     </div>
   );
 }
 

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const { percent } = require('./stats');
+const { isRealWebsite } = require('./lead-links');
 
 function saveReport(query, data, filename) {
   const report = [];
@@ -18,7 +19,7 @@ function saveReport(query, data, filename) {
   report.push(`✓ Description: ${data.filter(r => r.description && r.description.length > 50).length}/${data.length} (${percent(data, r => r.description && r.description.length > 50)}%)`);
   report.push(`✓ Photos: ${data.filter(r => (r.photos?.all || []).length > 0).length}/${data.length} (${percent(data, r => (r.photos?.all || []).length > 0)}%)`);
   report.push(`✓ Contact: ${data.filter(r => r.phone).length}/${data.length} (${percent(data, r => r.phone)}%)`);
-  report.push(`✓ Website: ${data.filter(r => r.website).length}/${data.length} (${percent(data, r => r.website)}%)`);
+  report.push(`✓ Website: ${data.filter(r => isRealWebsite(r.website)).length}/${data.length} (${percent(data, r => isRealWebsite(r.website))}%)`);
   report.push('\n' + '='.repeat(80));
   fs.writeFileSync(filename, report.join('\n'), 'utf-8');
 }

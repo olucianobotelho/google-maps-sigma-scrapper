@@ -34,7 +34,7 @@ import {
   readLocalArray,
 } from '../leadData';
 import { useNotifications } from './NotificationCenter';
-import { instagramProfileUrl, normalizeInstagram } from '../leadLinks.mjs';
+import { instagramProfileUrl, normalizeInstagram, isRealWebsite } from '../leadLinks.mjs';
 
 const BASEMAPS = {
   padrao: {
@@ -192,7 +192,7 @@ function getLeadName(l) { return l.name || l.n || 'Empresa'; }
 function getLeadCat(l) { return l.category || l.cat || 'Geral'; }
 function getLeadPhone(l) { return l.phone || l.tel || ''; }
 function getLeadEmail(l) { return l.email || l.mail || ''; }
-function getLeadWebsite(l) { return l.website || l.site || ''; }
+function getLeadWebsite(l) { return isRealWebsite(l.website || l.site) ? (l.website || l.site) : ''; }
 function getLeadIg(l) {
   const raw = l.instagram || l.ig || '';
   return normalizeInstagram(raw) || raw;

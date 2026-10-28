@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { DEFAULT_RULES } = require("./scoring-engine");
+const { isInstagramUrl, isRealWebsite } = require("../utils/lead-links");
 
 function websiteValue(lead) {
   return String(lead?.company?.website || lead?.website || "").trim();
@@ -12,20 +13,8 @@ function instagramValue(lead) {
   return instagram || (isInstagramUrl(website) ? website : "");
 }
 
-function isInstagramUrl(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return false;
-  try {
-    const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
-    return /(^|\.)instagram\.com$/i.test(url.hostname.replace(/^www\./i, ""));
-  } catch {
-    return /instagram\.com/i.test(raw);
-  }
-}
-
 function hasWebsite(lead) {
-  const website = websiteValue(lead);
-  return !!website && !isInstagramUrl(website);
+  return isRealWebsite(websiteValue(lead));
 }
 
 function hasInstagram(lead) {

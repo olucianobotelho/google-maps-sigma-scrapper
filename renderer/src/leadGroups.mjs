@@ -3,6 +3,7 @@
 // Scoring e o assistente de campanha para que os três vejam os mesmos grupos.
 
 import { leadIdentityKeys, leadKey } from './leadMatch.mjs';
+import { isRealWebsite } from './leadLinks.mjs';
 
 export const CHANNELS = [
   { key: 'whatsapp', label: 'WhatsApp', hint: 'telefone utilizável' },
@@ -57,7 +58,7 @@ export function leadChannels(lead) {
   return {
     phone: phone.length >= 8,
     whatsapp: phone.length >= 8 || Boolean(source.whatsapp),
-    site: Boolean(String(source.website || source.site || '').trim()),
+    site: isRealWebsite(source.website || source.site),
     instagram: Boolean(String(source.instagram || source.ig || '').trim()),
     email: Boolean(String(source.email || source.mail || '').trim()),
   };

@@ -104,7 +104,15 @@ function normalizeLinkFields(value, stats, seen = new WeakSet(), pathLabel = '')
       }
     }
     for (const key of INSTAGRAM_KEYS) {
-      if (value[key] === undefined) continue;
+      if (value[key] === undefined) {
+        const missingEverywhere = INSTAGRAM_KEYS.every((candidate) => value[candidate] === undefined);
+        if (key === INSTAGRAM_KEYS[0] && links.instagram && missingEverywhere) {
+          if (stats.examples.length < 5) stats.examples.push({ path: pathLabel ? `${pathLabel}.${key}` : key, before: undefined, after: links.instagram });
+          value[key] = links.instagram;
+          stats.changed += 1;
+        }
+        continue;
+      }
       stats.fields += 1;
       if (value[key] !== links.instagram) {
         if (stats.examples.length < 5) stats.examples.push({ path: pathLabel ? `${pathLabel}.${key}` : key, before: value[key], after: links.instagram });

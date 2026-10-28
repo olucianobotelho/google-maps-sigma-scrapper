@@ -184,3 +184,22 @@ test('JSON corrompido é preservado antes de iniciar um Kanban novo', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('perfil do card não guarda Linktree/Instagram como website', () => {
+  const { profileFrom } = require('../kanban/kanban-store');
+  const linktree = profileFrom({ name: 'Café Aurora', website: 'https://linktr.ee/cafe.aurora' });
+  assert.equal(linktree.website, '');
+  const instagram = profileFrom({ name: 'Café Aurora', website: 'https://instagram.com/cafe.aurora' });
+  assert.equal(instagram.website, '');
+  const real = profileFrom({ name: 'Café Aurora', website: 'https://cafeaurora.com.br?utm_source=gmaps' });
+  assert.equal(real.website, 'https://cafeaurora.com.br/');
+});
+
+test('regra hasWebsite não casa lead só com link-in-bio', () => {
+  const { profileFrom, getFieldValue } = (() => {
+    const mod = require('../kanban/kanban-store');
+    return { profileFrom: mod.profileFrom, getFieldValue: null };
+  })();
+  const lead = profileFrom({ name: 'Café Aurora', website: 'https://linktr.ee/cafe.aurora' });
+  assert.equal(Boolean(lead.website), false);
+});

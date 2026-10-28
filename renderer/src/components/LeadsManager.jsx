@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { dedupeLeads, normalizeLeadCategory, normalizeLeadCollection, readLocalArray } from '../leadData';
 import { DEFAULT_SCORE_THRESHOLDS, buildScoringIndex, findScoringLead, resolveGroupMembers, scoreBand } from '../leadMatch.mjs';
-import { normalizeLeadLinks } from '../leadLinks.mjs';
+import { normalizeLeadLinks, isRealWebsite } from '../leadLinks.mjs';
 import {
   CHANNELS,
   CHANNEL_STATES,
@@ -430,7 +430,7 @@ export default function LeadsManager({ onUpdateLeadsCount, addLog }) {
   const leadHasChan = (l, ch) => {
     if (ch === 'tel' || ch === 'wa') return Boolean(getLeadTel(l));
     if (ch === 'ig') return Boolean(getLeadIg(l));
-    if (ch === 'site') return Boolean(getLeadSite(l));
+    if (ch === 'site') return isRealWebsite(getLeadSite(l));
     if (ch === 'mail') return Boolean(getLeadMail(l));
     return false;
   };

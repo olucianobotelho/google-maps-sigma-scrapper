@@ -566,8 +566,9 @@ function shouldTryNextProvider(error) {
 }
 
 function fallbackSalesAnalysis(lead, siteAnalysis, score, settings, warning = "") {
+  const { isRealWebsite } = require("../utils/lead-links");
   const c = lead.company || {};
-  const hasSite = !!c.website;
+  const hasSite = isRealWebsite(c.website);
   const mainPain = pickMainPain(c, siteAnalysis);
   const opportunity = pickOpportunity(c, siteAnalysis);
   const companyName = c.name || "sua empresa";
@@ -624,7 +625,8 @@ function fallbackSalesAnalysis(lead, siteAnalysis, score, settings, warning = ""
 }
 
 function pickMainPain(company, site) {
-  if (!company.website) return "A empresa não tem um site próprio claro.";
+  const { isRealWebsite } = require("../utils/lead-links");
+  if (!isRealWebsite(company.website)) return "A empresa não tem um site próprio claro.";
   if (!site.hasHttps) return "O site não está seguro (sem cadeado HTTPS).";
   if (!site.conversion?.hasWhatsappButton) return "O site não facilita o contato imediato pelo WhatsApp.";
   if (!site.conversion?.hasForm) return "O site não captura pedidos de orçamento por formulário.";
@@ -635,7 +637,8 @@ function pickMainPain(company, site) {
 }
 
 function pickOpportunity(company, site) {
-  if (!company.website) return "Criar um site simples e profissional para aumentar confiança e receber contatos.";
+  const { isRealWebsite } = require("../utils/lead-links");
+  if (!isRealWebsite(company.website)) return "Criar um site simples e profissional para aumentar confiança e receber contatos.";
   if (site.tracking?.metaPixel || site.tracking?.googleAdsConversion) return "Melhorar a página para aproveitar melhor o tráfego de anúncios que já existe.";
   if (company.reviewCount >= 50) return "Usar as avaliações do Google como prova social em uma página mais persuasiva.";
   return "Reposicionar o site para gerar mais contatos qualificados.";

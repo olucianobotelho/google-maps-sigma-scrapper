@@ -134,3 +134,24 @@ test('progresso é limitado entre 0 e 100', async () => {
   assert.equal(reduceUpdateEvent({ status: 'progress', percent: 180 }).percent, 100);
   assert.equal(reduceUpdateEvent({ status: 'progress', percent: -20 }).percent, 0);
 });
+
+test('filtro "sem site" trata Linktree/Instagram como sem site', async () => {
+  const { filterLeads, leadChannels } = await groupsModule;
+  const base = [
+    { id: 'real', name: 'Com Site Real', website: 'https://cafeaurora.com.br' },
+    { id: 'linktree', name: 'Só Linktree', website: 'https://linktr.ee/cafe.aurora' },
+    { id: 'instagram', name: 'Só Instagram', website: 'https://instagram.com/cafe.aurora' },
+    { id: 'none', name: 'Sem Nada' },
+  ];
+
+  const withSite = filterLeads(base, { channels: { site: 'with' } });
+  assert.deepEqual(withSite.map((lead) => lead.id), ['real']);
+
+  const withoutSite = filterLeads(base, { channels: { site: 'without' } });
+  assert.deepEqual(withoutSite.map((lead) => lead.id), ['linktree', 'instagram', 'none']);
+
+  assert.equal(leadChannels(base[0]).site, true);
+  assert.equal(leadChannels(base[1]).site, false);
+  assert.equal(leadChannels(base[2]).site, false);
+  assert.equal(leadChannels(base[3]).site, false);
+});

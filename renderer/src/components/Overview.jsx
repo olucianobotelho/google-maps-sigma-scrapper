@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Bell,
   Clock3,
@@ -22,6 +23,7 @@ import {
   normalizeLeadCollection,
   readLocalArray,
 } from '../leadData';
+import { isRealWebsite } from '../leadLinks.mjs';
 
 const METRICS = [
   { id: 'leads', Icon: Users, label: 'Leads', title: 'Quantidade de leads', color: '#10a37f' },
@@ -119,6 +121,23 @@ function compactExtractionLabel(search) {
   return { label: `${niche || 'Extração'}${UF_CODES.has(uf) ? ` · ${uf}` : ''}`, niche: niche || 'Extração', uf };
 }
 
+function asTimestamp(value) {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric < 1e12 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function pendingArrivalTimestamp(item) {
+  // reminderCreatedAt is written when a reminder is saved. The remaining
+  // fields keep older boards ordered until they receive that metadata.
+  return asTimestamp(item?.reminderCreatedAt)
+    || asTimestamp(item?.updatedAt)
+    || asTimestamp(item?.createdAt)
+    || asTimestamp(item?.movedAt)
+    || asTimestamp(item?.reminderAt);
+}
+
 function Overview({ onNavigate, onNewExtraction, leadsCount = 0 }) {
   const [categoryView, setCategoryView] = useState(() => localStorage.getItem('sigma_overview_category_view') || 'bars');
   const [searchView, setSearchView] = useState(() => localStorage.getItem('sigma_overview_search_view') || 'bars');
@@ -129,6 +148,9 @@ function Overview({ onNavigate, onNewExtraction, leadsCount = 0 }) {
   const [campaigns, setCampaigns] = useState([]);
   const [kanbanSnapshot, setKanbanSnapshot] = useState({ cards: [], stats: { wonValue: 0, wonCount: 0, ticketAverage: 0, openValue: 0, reminderCount: 0 } });
   const [pendingMenuOpen, setPendingMenuOpen] = useState(false);
+  const [pendingPopoverPosition, setPendingPopoverPosition] = useState(null);
+  const pendingTriggerRef = useRef(null);
+  const pendingPopoverRef = useRef(null);
   const [standaloneReminders, setStandaloneReminders] = useState(() => {
     try {
       const raw = JSON.parse(localStorage.getItem('sigma_whatsapp_reminders') || '[]');
@@ -207,11 +229,12 @@ function Overview({ onNavigate, onNewExtraction, leadsCount = 0 }) {
     }));
     return [...kanbanPending, ...standalonePending]
     .sort((a, b) => {
-      const aReminder = Number(a.reminderAt) || Number.MAX_SAFE_INTEGER;
-      const bReminder = Number(b.reminderAt) || Number.MAX_SAFE_INTEGER;
-      return aReminder - bReminder || Number(b.repliedAt || 0) - Number(a.repliedAt || 0);
-    })
-    .slice(0, 6);
+      const arrivalOrder = pendingArrivalTimestamp(b) - pendingArrivalTimestamp(a);
+      if (arrivalOrder) return arrivalOrder;
+      const aReminder = asTimestamp(a.reminderAt) || Number.MAX_SAFE_INTEGER;
+      const bReminder = asTimestamp(b.reminderAt) || Number.MAX_SAFE_INTEGER;
+      return aReminder - bReminder || String(a.entityKey || '').localeCompare(String(b.entityKey || ''), 'pt-BR');
+    });
   }, [kanbanSnapshot.cards, standaloneReminders]);
 
   const reminderTotal = Number(dealStats.reminderCount || 0) + standaloneReminders.length;
@@ -230,6 +253,109 @@ function Overview({ onNavigate, onNewExtraction, leadsCount = 0 }) {
     }
     setPendingMenuOpen(false);
   };
+
+  useLayoutEffect(() => {
+    if (!pendingMenuOpen) {
+      setPendingPopoverPosition(null);
+      return undefined;
+    }
+
+    const updatePosition = () => {
+      const trigger = pendingTriggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const viewportPadding = 12;
+      const gap = 10;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const width = Math.min(360, Math.max(0, viewportWidth - (viewportPadding * 2)));
+      const preferredLeft = rect.right - width;
+      const left = Math.min(
+        Math.max(viewportPadding, preferredLeft),
+        Math.max(viewportPadding, viewportWidth - width - viewportPadding),
+      );
+      const downTop = rect.bottom + gap;
+      const availableBelow = viewportHeight - downTop - viewportPadding;
+      const canStayBelow = availableBelow >= 140;
+      // Abre abaixo do sino sempre que houver espaço. Em uma janela muito
+      // curta, desloca só o necessário para manter o painel visível.
+      const top = canStayBelow
+        ? downTop
+        : Math.max(viewportPadding, viewportHeight - Math.min(520, Math.max(140, viewportHeight - (viewportPadding * 2))) - viewportPadding);
+      const maxHeight = Math.max(140, Math.min(520, viewportHeight - top - viewportPadding));
+      setPendingPopoverPosition({ top, left, width, maxHeight });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [pendingMenuOpen]);
+
+  useEffect(() => {
+    if (!pendingMenuOpen) return undefined;
+    const closeOnOutside = (event) => {
+      if (pendingTriggerRef.current?.contains(event.target) || pendingPopoverRef.current?.contains(event.target)) return;
+      setPendingMenuOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setPendingMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [pendingMenuOpen]);
+
+  const pendingPopover = pendingMenuOpen && pendingPopoverPosition
+    ? createPortal(
+      <div
+        ref={pendingPopoverRef}
+        id="overview-pending-popover"
+        className="overview-pending-popover"
+        role="dialog"
+        aria-labelledby="overview-pending-title"
+        style={{
+          top: `${pendingPopoverPosition.top}px`,
+          left: `${pendingPopoverPosition.left}px`,
+          width: `${pendingPopoverPosition.width}px`,
+          maxHeight: `${pendingPopoverPosition.maxHeight}px`,
+        }}
+      >
+        <div className="overview-pending-popover-head">
+          <div className="overview-pending-popover-heading">
+            <span id="overview-pending-title">Lembretes</span>
+            <small>{pendingDeals.length ? `${pendingDeals.length} · mais recentes primeiro` : 'Tudo em dia'}</small>
+          </div>
+          <button type="button" aria-label="Fechar lembretes" onClick={() => setPendingMenuOpen(false)}>×</button>
+        </div>
+        <div className="overview-pending-popover-list">
+          {pendingDeals.length ? pendingDeals.map((card) => {
+            const profile = card.entity?.profile || {};
+            const due = card.reminderAt && asTimestamp(card.reminderAt) <= Date.now();
+            const reminderAt = asTimestamp(card.reminderAt);
+            return (
+              <button type="button" className="overview-pending-popover-item" key={card.entityKey} onClick={() => openPendingDeal(card)}>
+                <span className="overview-pending-popover-icon"><Bell size={14} /></span>
+                <span className="overview-pending-popover-copy">
+                  <b>{profile.name || 'Lead sem nome'}</b>
+                  <small>{card.reminderNote || (due ? 'Lembrete vencido' : 'Lembrete')}</small>
+                  {reminderAt ? <time dateTime={new Date(reminderAt).toISOString()}>{shortDate(reminderAt)}</time> : null}
+                </span>
+                <span className="overview-pending-popover-value">{Number(card.dealValue) > 0 ? money(card.dealValue) : '—'}</span>
+              </button>
+            );
+          }) : <span className="overview-pending-empty">Nenhuma pendência</span>}
+        </div>
+      </div>,
+      document.body,
+    )
+    : null;
 
   useEffect(() => {
     try { localStorage.setItem('sigma_overview_category_view', categoryView); } catch {}
@@ -268,7 +394,7 @@ function Overview({ onNavigate, onNewExtraction, leadsCount = 0 }) {
         ...search,
         ...compact,
         count,
-        withSite: extractionLeads.filter((lead) => lead?.website || lead?.site).length,
+        withSite: extractionLeads.filter((lead) => isRealWebsite(lead?.website || lead?.site)).length,
         withPhone: extractionLeads.filter((lead) => lead?.phone || lead?.tel || lead?.whatsapp).length,
         withEmail: extractionLeads.filter((lead) => lead?.email || lead?.mail).length,
       };
@@ -437,27 +563,13 @@ function Overview({ onNavigate, onNewExtraction, leadsCount = 0 }) {
               <span className="overview-crm-metric" title="Receita ganha" aria-label={`Receita ganha: ${money(dealStats.wonValue)}`}><DollarSign size={15} /><b>{money(dealStats.wonValue)}</b></span>
               <span className="overview-crm-metric" title="Valor pendente" aria-label={`Valor pendente: ${money(dealStats.openValue)}`}><Clock3 size={15} /><b>{money(dealStats.openValue)}</b></span>
               <span className="overview-crm-metric" title="Vendas fechadas" aria-label={`Vendas fechadas: ${dealStats.wonCount || 0}`}><Trophy size={15} /><b>{Number(dealStats.wonCount || 0).toLocaleString('pt-BR')}</b></span>
-              <button type="button" className={`overview-crm-metric overview-crm-reminder ${pendingMenuOpen ? 'active' : ''}`} title="Abrir pendências" aria-label={`Lembretes: ${reminderTotal}`} aria-expanded={pendingMenuOpen} onClick={() => setPendingMenuOpen((open) => !open)}><Bell size={15} /><b>{reminderTotal.toLocaleString('pt-BR')}</b></button>
+              <button ref={pendingTriggerRef} type="button" className={`overview-crm-metric overview-crm-reminder ${pendingMenuOpen ? 'active' : ''}`} title="Abrir lembretes" aria-label={`Lembretes: ${reminderTotal}`} aria-expanded={pendingMenuOpen} aria-controls="overview-pending-popover" aria-haspopup="dialog" onClick={() => setPendingMenuOpen((open) => !open)}><Bell size={15} /><b>{reminderTotal.toLocaleString('pt-BR')}</b></button>
             </div>
-            {pendingMenuOpen && (
-              <div className="overview-pending-popover" role="dialog" aria-label="Pendências comerciais">
-                <div className="overview-pending-popover-head"><span>Pendências</span><button type="button" aria-label="Fechar pendências" onClick={() => setPendingMenuOpen(false)}>×</button></div>
-                {pendingDeals.length ? pendingDeals.map((card) => {
-                  const profile = card.entity?.profile || {};
-                  const due = card.reminderAt && Number(card.reminderAt) <= Date.now();
-                  return (
-                    <button type="button" className="overview-pending-popover-item" key={card.entityKey} onClick={() => openPendingDeal(card)}>
-                      <span className="overview-pending-popover-icon"><Bell size={14} /></span>
-                      <span className="overview-pending-popover-copy"><b>{profile.name || 'Lead sem nome'}</b><small>{card.reminderNote || (due ? 'Lembrete vencido' : 'Lembrete')}</small></span>
-                      <span className="overview-pending-popover-value">{Number(card.dealValue) > 0 ? money(card.dealValue) : '—'}</span>
-                    </button>
-                  );
-                }) : <span className="overview-pending-empty">Nenhuma pendência</span>}
-              </div>
-            )}
           </div>
         </div>
       </section>
+
+      {pendingPopover}
 
       <div className="overview-grid dash-grid">
         <section className="overview-panel panel" data-od-id="dashboard-categories">

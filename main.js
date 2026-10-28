@@ -100,6 +100,7 @@ function normalizeIncomingLead(item = {}) {
     address: normalizeAddress(item?.address),
     phone: normalizePhoneDisplay(item?.phone || item?.tel) || normalizeText(item?.phone),
     website: links.website,
+    site: links.website,
     instagram: links.instagram,
   };
 }

@@ -18,8 +18,12 @@ async function extractBusinessData(page) {
     };
     // Links do Google (Maps, shortlinks, CDN de fotos) nunca são o site da empresa.
     const isGoogleHost = (host) => /(^|\.)(google\.[a-z.]+|goo\.gl|g\.co|googleusercontent\.com|gstatic\.com|withgoogle\.com)$/.test(host);
-    const isSocialHost = (host) => /(^|\.)(instagram\.com|instagr\.am|facebook\.com|fb\.com|fb\.me|whatsapp\.com|wa\.me|tiktok\.com|twitter\.com|x\.com|linkedin\.com)$/.test(host);
+    const isSocialHost = (host) => /(^|\.)(instagram\.com|instagr\.am|facebook\.com|fb\.com|fb\.me|whatsapp\.com|wa\.me|tiktok\.com|twitter\.com|x\.com|linkedin\.com|youtube\.com|youtu\.be)$/.test(host);
     const isInstagramHost = (host) => /(^|\.)(instagram\.com|instagr\.am)$/.test(host);
+    const isAggregatorHost = (host) => /(^|\.)(linktr\.ee|linktree\.com|beacons\.ai|bio\.site|bio\.link|taplink\.cc|lnk\.bio|linkin\.bio|allmylinks\.com|campsite\.bio)$/.test(host);
+    const isMarketplaceHost = (host) => /(^|\.)(ifood\.com\.br|getninjas\.com\.br|doctoralia\.com\.br|tripadvisor\.com(?:\.br)?|reclameaqui\.com\.br)$/.test(host);
+    const isShortenerHost = (host) => /(^|\.)(bit\.ly|tinyurl\.com|t\.co|is\.gd)$/.test(host);
+    const isNonSiteHost = (host) => isGoogleHost(host) || isSocialHost(host) || isAggregatorHost(host) || isMarketplaceHost(host) || isShortenerHost(host);
     // O painel do lugar é o único escopo confiável: o feed lateral mantém
     // resultados anteriores no DOM e contaminava site/Instagram do lead atual.
     const panel = document.querySelector('div[role="main"]') || document.body;
@@ -71,12 +75,12 @@ async function extractBusinessData(page) {
     if (!website) {
       const candidate = Array.from(panel.querySelectorAll('a[href^="http"]')).find((anchor) => {
         const host = hostOf(anchor.href);
-        if (!host || isGoogleHost(host) || isSocialHost(host)) return false;
+        if (!host || isNonSiteHost(host)) return false;
         return !anchor.closest('button[aria-label*="photo"], div[data-review-id]');
       });
       website = candidate?.href || '';
     }
-    if (website && !isGoogleHost(hostOf(website))) data.website = website;
+    if (website && !isNonSiteHost(hostOf(website))) data.website = website;
 
     // --- INSTAGRAM ---
     const igAnchor = Array.from(panel.querySelectorAll('a[href*="instagram.com"], a[href*="instagr.am"]')).find((anchor) => {

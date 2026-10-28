@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { normalizeAddress } = require('../utils/address-normalizer');
 const { normalizeText } = require('../utils/text-normalizer');
+const { normalizeWebsite, isRealWebsite } = require('../utils/lead-links');
 
 const VERSION = 2;
 const MAX_COLUMNS = 12;
@@ -246,7 +247,7 @@ function profileFrom(raw = {}) {
   return {
     name: cleanText(company.name || company.company || raw.name || raw.companyName || '', 140),
     phone: normalizePhone(company.phone || company.whatsapp || raw.phone || raw.whatsapp || raw.phoneRaw || raw.jid),
-    website: cleanText(company.website || company.site || raw.website || raw.site || '', 300),
+    website: normalizeWebsite(company.website || company.site || raw.website || raw.site || ''),
     email: cleanText(company.email || company.mail || raw.email || raw.mail || '', 180),
     category: cleanText(company.category || company.cat || raw.category || raw.cat || '', 100),
     address: cleanText(normalizeAddress(company.address || raw.address || ''), 220),
@@ -323,7 +324,7 @@ function eventForSource(source, raw = {}) {
 function getFieldValue(entity, field) {
   const profile = entity?.profile || {};
   if (field === 'hasPhone') return Boolean(profile.phone);
-  if (field === 'hasWebsite') return Boolean(profile.website);
+  if (field === 'hasWebsite') return isRealWebsite(profile.website);
   if (field === 'hasEmail') return Boolean(profile.email);
   if (field === 'source') {
     const refs = entity?.sourceRefs || {};
@@ -576,6 +577,7 @@ class KanbanStore {
       repliedAt: null,
       reminderAt: null,
       reminderNote: '',
+      reminderCreatedAt: null,
       movedAt: now(),
       createdAt: now(),
     };
@@ -589,6 +591,7 @@ class KanbanStore {
     }
     if (!existingCard.reminderAt && activity.reminderAt) {
       existingCard.reminderAt = activity.reminderAt;
+      existingCard.reminderCreatedAt = now();
       this._dirty = true;
     }
     // Valor já registrado no scoring entra no card sem sobrescrever o que o
@@ -812,6 +815,7 @@ class KanbanStore {
     card.dealAt = outcome === 'open' ? null : now();
     card.reminderAt = toTimestamp(reminderAt) || null;
     card.reminderNote = card.reminderAt ? cleanText(reminderNote, 200) : '';
+    card.reminderCreatedAt = card.reminderAt ? now() : null;
     if (outcome !== 'open') card.manualOverride = true;
 
     // Primeiro respeita a automação simples configurada pelo usuário. Sem uma

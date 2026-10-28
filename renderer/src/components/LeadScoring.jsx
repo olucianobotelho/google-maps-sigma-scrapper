@@ -21,6 +21,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { dedupeLeads, normalizeLeadCollection, readLocalArray } from '../leadData';
+import { isRealWebsite } from '../leadLinks.mjs';
 import {
   DEFAULT_SCORE_THRESHOLDS,
   buildScoringIndex,
@@ -187,6 +188,22 @@ function fmtShort(ts) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+function scoreWhyTitle(an, score, band, thresholds) {
+  if (!an || score == null || !band) return 'Não analisado';
+  const t = normalizeThresholds(thresholds);
+  const range =
+    band.key === 'high' ? `≥ ${t.highFrom}` :
+    band.key === 'mid' ? `${t.goodFrom} a ${t.highFrom - 1}` :
+    `< ${t.goodFrom}`;
+  const lines = [`Score ${score} — faixa ${band.label} (${range})`];
+  const pos = (an.pos || []).filter(Boolean);
+  const neg = (an.neg || []).filter(Boolean);
+  if (pos.length) lines.push('', 'Pontos fortes:', ...pos.map((r) => `• ${r}`));
+  if (neg.length) lines.push('', 'Motivos:', ...neg.map((r) => `• ${r}`));
+  if (!pos.length && !neg.length) lines.push('', 'Sem detalhes de análise — clique em Reanalisar.');
+  return lines.join('\n');
+}
+
 function analysisFromService(savedLead, preset = 'sites') {
   const company = savedLead?.company || savedLead || {};
   const site = savedLead?.siteAnalysis || {};
@@ -206,7 +223,7 @@ function analysisFromService(savedLead, preset = 'sites') {
     ...(Array.isArray(ai.principais_oportunidades) ? ai.principais_oportunidades : []),
     ...(Array.isArray(site.siteSummary?.conversion?.likelyLeaks) ? site.siteSummary.conversion.likelyLeaks : []),
   ].filter(Boolean);
-  const noSite = !site.finalUrl && !company.website;
+  const noSite = !site.finalUrl && !isRealWebsite(company.website);
   const sections = [
     {
       t: 'Diagnóstico técnico',
@@ -931,7 +948,7 @@ export default function LeadScoring({ onUpdateScoringCount, addLog }) {
                             {lead.name || 'Empresa'}
                           </b>
                         </td>
-                        <td>
+                        <td title={scoreWhyTitle(an, score, band, thresholds)}>
                           {an ? (
                             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                               <b style={{ fontVariantNumeric: 'tabular-nums' }}>{score}</b>
@@ -944,7 +961,7 @@ export default function LeadScoring({ onUpdateScoringCount, addLog }) {
                           )}
                         </td>
                         <td style={{ fontSize: 12.5 }}>
-                          {lead.website ? (
+                          {isRealWebsite(lead.website) ? (
                             <button type="button" className="site-icon-btn" title={lead.website} aria-label={`Abrir site ${lead.website}`} onClick={() => window.electronAPI?.openSite?.(lead.website)}>
                               <Globe size={15} />
                             </button>

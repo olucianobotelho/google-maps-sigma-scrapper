@@ -2,6 +2,7 @@
 // O serviço salva cada análise com id próprio, então a única forma confiável de
 // reencontrar o score de um lead é casar identidade (telefone, nome+endereço,
 // site), nunca o id do renderer.
+import { isNonSiteUrl } from './leadLinks.mjs';
 
 export const DEFAULT_SCORE_THRESHOLDS = Object.freeze({
   ignoreBelow: 40,
@@ -48,6 +49,7 @@ function digits(value) {
 function hostKey(value) {
   const raw = String(value ?? '').trim();
   if (!raw || raw.includes(' ') || !raw.includes('.')) return '';
+  if (isNonSiteUrl(raw)) return '';
   try {
     const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
     return url.hostname.toLocaleLowerCase('en-US').replace(/^www\./, '');

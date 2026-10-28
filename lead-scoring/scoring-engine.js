@@ -1,5 +1,7 @@
 // Preset recomendado. Todo peso aqui pode ser ajustado em
 // Configurar análise → Regras do score; o motor lê exatamente estes números.
+const { isRealWebsite } = require("../utils/lead-links");
+
 const DEFAULT_RULES = {
   thresholds: {
     ignoreBelow: 40,
@@ -99,7 +101,7 @@ function hasMediaPixel(site = {}) {
 }
 
 function listSitePains(company, site = {}, digitalPainRules = DEFAULT_RULES.digitalPain) {
-  if (!company.website) return [];
+  if (!isRealWebsite(company.website)) return [];
   if (site.digitalPresence && site.digitalPresence.reachable !== true) return [];
   const pains = [];
   if (!site.hasHttps) pains.push("https");
@@ -115,6 +117,7 @@ function listSitePains(company, site = {}, digitalPainRules = DEFAULT_RULES.digi
 
 function calculateScore(lead, siteAnalysis = {}, aiSignal = {}, settings = {}) {
   const company = lead.company || {};
+  const hasWebsite = isRealWebsite(company.website);
   const rules = resolveRules(settings);
   const commercialFit = scoreCommercialFit(company, rules.commercialFit);
   const digitalPain = scoreDigitalPain(company, siteAnalysis, rules.digitalPain);
@@ -126,11 +129,11 @@ function calculateScore(lead, siteAnalysis = {}, aiSignal = {}, settings = {}) {
   // Prioridade alta = tem site com várias falhas fáceis de vender (pixel, HTTPS, mobile, WhatsApp…).
   const pains = listSitePains(company, siteAnalysis, rules.digitalPain);
   const strongPains = pains.filter((pain) => ["https", "mobile", "whatsapp", "pixel", "slow"].includes(pain));
-  if (company.website && strongPains.length >= 2 && commercialFit >= 8) {
+  if (hasWebsite && strongPains.length >= 2 && commercialFit >= 8) {
     value = Math.max(value, rules.thresholds.highFrom);
   }
   // Sem site continua oportunidade, mas não “pula a fila” dos sites quebrados.
-  if (!company.website && commercialFit >= 10) {
+  if (!hasWebsite && commercialFit >= 10) {
     value = Math.max(value, rules.thresholds.goodFrom);
     value = Math.min(value, rules.thresholds.highFrom - 1);
   }
@@ -169,7 +172,7 @@ function scoreCommercialFit(company, rules = DEFAULT_RULES.commercialFit) {
 }
 
 function scoreDigitalPain(company, site, rules) {
-  if (!company.website) return clamp(rules.noWebsitePoints, 0, rules.maxPoints);
+  if (!isRealWebsite(company.website)) return clamp(rules.noWebsitePoints, 0, rules.maxPoints);
   if (site.digitalPresence && site.digitalPresence.reachable !== true) return 0;
 
   let score = 0;
@@ -208,7 +211,7 @@ function scoreContactability(company, site, rules = DEFAULT_RULES.contactability
  */
 function scoreConversionPotential(company, site, rules = DEFAULT_RULES.conversionPotential) {
   let score = 0;
-  if (!company.website) {
+  if (!isRealWebsite(company.website)) {
     return Number(company.reviewCount || 0) >= 50 ? rules.noWebsiteHighBonus : rules.noWebsiteLowBonus;
   }
   if (site.digitalPresence && site.digitalPresence.reachable !== true) return 0;
@@ -237,29 +240,30 @@ function scoreConversionPotential(company, site, rules = DEFAULT_RULES.conversio
 
 function buildReasons(company, site, score, pains = []) {
   const reasons = [];
-  const siteReachable = !company.website || !site.digitalPresence || site.digitalPresence.reachable === true;
-  if (!company.website) {
+  const hasWebsite = isRealWebsite(company.website);
+  const siteReachable = !hasWebsite || !site.digitalPresence || site.digitalPresence.reachable === true;
+  if (!hasWebsite) {
     reasons.push("Empresa sem site: boa chance de oferecer um site ou página simples (mas sites com falhas vêm antes na fila).");
   }
-  if (company.website && !siteReachable) {
+  if (hasWebsite && !siteReachable) {
     reasons.push("O site não respondeu à análise; a prioridade considera apenas os dados comerciais e de contato confirmados.");
   }
-  if (company.website && siteReachable && pains.length >= 2) {
+  if (hasWebsite && siteReachable && pains.length >= 2) {
     reasons.push("Tem site com várias falhas — prioridade alta para oferecer correção ou redesign.");
   }
   if (company.reviewCount >= 50) reasons.push("Tem bastante avaliação no Google — já tem credibilidade para vender.");
-  if (!site.conversion?.hasWhatsappButton && company.website && siteReachable) reasons.push("No site não aparece WhatsApp de forma clara para o cliente chamar.");
-  if (!site.conversion?.hasForm && company.website && siteReachable) reasons.push("Não tem formulário visível para pedir orçamento.");
-  if (!hasMediaPixel(site) && company.website && siteReachable) reasons.push("Sem pixel de anúncio — difícil medir campanhas; ótimo argumento de venda.");
-  if (!site.tracking?.googleAnalytics && !site.tracking?.googleTagManager && company.website && siteReachable) {
+  if (!site.conversion?.hasWhatsappButton && hasWebsite && siteReachable) reasons.push("No site não aparece WhatsApp de forma clara para o cliente chamar.");
+  if (!site.conversion?.hasForm && hasWebsite && siteReachable) reasons.push("Não tem formulário visível para pedir orçamento.");
+  if (!hasMediaPixel(site) && hasWebsite && siteReachable) reasons.push("Sem pixel de anúncio — difícil medir campanhas; ótimo argumento de venda.");
+  if (!site.tracking?.googleAnalytics && !site.tracking?.googleTagManager && hasWebsite && siteReachable) {
     reasons.push("Parece que o site não mede visitas nem resultados.");
   }
-  if (site.mobile?.isResponsive === false && company.website && siteReachable) reasons.push("O site pode não funcionar bem no celular.");
-  if ((site.performance?.loadTimeMs || 0) > 3500 && company.website && siteReachable) {
+  if (site.mobile?.isResponsive === false && hasWebsite && siteReachable) reasons.push("O site pode não funcionar bem no celular.");
+  if ((site.performance?.loadTimeMs || 0) > 3500 && hasWebsite && siteReachable) {
     reasons.push("O site carrega devagar — muita gente desiste antes de ver o conteúdo.");
   }
-  if (!site.hasHttps && company.website && siteReachable) reasons.push("O site não está seguro (sem cadeado HTTPS) — isso gera desconfiança.");
-  if (score >= 75 && company.website && siteReachable) {
+  if (!site.hasHttps && hasWebsite && siteReachable) reasons.push("O site não está seguro (sem cadeado HTTPS) — isso gera desconfiança.");
+  if (score >= 75 && hasWebsite && siteReachable) {
     reasons.push("Prioridade alta: site com problemas claros e potencial comercial juntos.");
   }
   if (score < 40) reasons.push("Por enquanto vale menos a pena investir tempo neste lead.");

@@ -111,3 +111,21 @@ test('limpa site e instagram já salvos na base', () => withRoot((root) => {
   const second = migrateExistingData(root, { localStorage: report.localStorageUpdates });
   assert.equal(second.changed, false);
 }));
+
+test('migra URL de Instagram do website para o campo instagram mesmo sem chave prévia', () => withRoot((root) => {
+  const report = migrateExistingData(root, {
+    localStorage: {
+      sigma_leads: JSON.stringify([
+        { id: 'lead_ig', name: 'Barba e Cia', website: 'https://www.instagram.com/barbaecia.sp/' },
+        { id: 'lead_lt', name: 'Studio Sorriso DF', website: 'https://linktr.ee/studiosorrisodf' },
+      ]),
+    },
+  });
+
+  assert.equal(report.changed, true);
+  const stored = JSON.parse(report.localStorageUpdates.sigma_leads);
+  assert.equal(stored[0].website, '');
+  assert.equal(stored[0].instagram, '@barbaecia.sp');
+  assert.equal(stored[1].website, '');
+  assert.equal(stored[1].instagram, undefined);
+}));
