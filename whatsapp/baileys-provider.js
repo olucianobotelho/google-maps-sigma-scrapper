@@ -36,6 +36,7 @@ class BaileysProvider extends WhatsAppProvider {
     this._dataPath = path.join(userDataPath, "sigma-chats.json");
     this._mediaCacheRoot = path.join(userDataPath, "whatsapp-media-cache");
     this._stickerCacheRoot = path.join(userDataPath, "whatsapp-stickers");
+    this._logPath = path.join(userDataPath, "logs", "whatsapp-baileys.log");
     this._syncStats = null;
     this._syncActive = false; // Flag to enable adaptive throttling during sync
     // messageId -> { filePath, mimetype, kind, jids[] } — mídia enviada por nós (play local)
@@ -86,6 +87,25 @@ class BaileysProvider extends WhatsAppProvider {
     return cached;
   }
 
+  /**
+   * Avisos e erros do Baileys (ex.: falha no upload de mídia) vão para
+   * userData/logs/whatsapp-baileys.log. Antes ficavam em "silent" e um áudio
+   * que não subia não deixava rastro.
+   */
+  _createBaileysLogger() {
+    const pino = require("pino");
+    try {
+      fs.mkdirSync(path.dirname(this._logPath), { recursive: true });
+      if (fs.existsSync(this._logPath) && fs.statSync(this._logPath).size > 5 * 1024 * 1024) {
+        fs.renameSync(this._logPath, `${this._logPath}.old`);
+      }
+      return pino({ level: "warn" }, pino.destination({ dest: this._logPath, sync: false }));
+    } catch (e) {
+      console.warn("[BAILEYS] log em arquivo indisponível:", e.message);
+      return pino({ level: "silent" });
+    }
+  }
+
   async connect() {
     const {
       makeWASocket,
@@ -94,8 +114,7 @@ class BaileysProvider extends WhatsAppProvider {
       Browsers,
       makeCacheableSignalKeyStore,
     } = require("@whiskeysockets/baileys");
-    const pino = require("pino");
-    const logger = pino({ level: "silent" });
+    const logger = this._createBaileysLogger();
 
     this._shouldStop = false;
     this._reconnectAttempts = 0;
@@ -191,15 +210,7 @@ class BaileysProvider extends WhatsAppProvider {
           // o envio de campanha para sempre. 60s é o padrão do Baileys.
           defaultQueryTimeoutMs: 60000,
           qrTimeout: 60000,
-          getMessage: async (key) => {
-            // Return stored message for protocol to resolve references
-            if (this._messages[key.remoteJid]) {
-              return this._messages[key.remoteJid].find(
-                (m) => m.key?.id === key.id,
-              );
-            }
-            return undefined;
-          },
+          getMessage: async (key) => this._getMessageForRetry(key),
         });
 
         this.onStatus("connecting", { msg: "Waiting for QR scan..." });
@@ -634,6 +645,24 @@ class BaileysProvider extends WhatsAppProvider {
     return !!(media && (media.mediaKey || media.url || media.directPath));
   }
 
+  /**
+   * Conteúdo usado pelo Baileys para reenviar uma mensagem quando o aparelho do
+   * contato pede retry. Precisa ser o proto.IMessage (msg.message), não o
+   * WAMessage inteiro — senão o reenvio sai vazio.
+   */
+  _getMessageForRetry(key) {
+    if (!key?.id) return undefined;
+    const found = this._findMessageAnywhere(key.remoteJid, key.id);
+    const msg = found?.msg;
+    if (!msg?.message) return undefined;
+    // Registro local de mídia sem mediaKey/url: reenviar isso entregaria um
+    // áudio/arquivo impossível de baixar. Melhor não reenviar.
+    if (this._getMessageMediaMeta(msg) && !this._messageHasDownloadableMedia(msg)) {
+      return undefined;
+    }
+    return msg.message;
+  }
+
   _addMessage(jid, msg) {
     if (!msg.key?.id) return;
     if (!this._msgIndex[jid]) this._msgIndex[jid] = new Set();
@@ -647,11 +676,15 @@ class BaileysProvider extends WhatsAppProvider {
         if (this._messageHasDownloadableMedia(msg) && !this._messageHasDownloadableMedia(old)) {
           this._messages[jid][idx] = msg;
         } else if (msg.messageTimestamp && (!old.messageTimestamp || msg.messageTimestamp >= old.messageTimestamp)) {
-          // merge leve de status
+          // merge leve de status. O registro local de envio não tem mediaKey/url:
+          // se o eco do servidor chegou antes, o payload dele precisa ser mantido,
+          // senão um reenvio (retry) sai sem a chave e o destinatário não baixa.
+          const keepOldPayload =
+            this._messageHasDownloadableMedia(old) && !this._messageHasDownloadableMedia(msg);
           this._messages[jid][idx] = {
             ...old,
             ...msg,
-            message: msg.message || old.message,
+            message: keepOldPayload ? old.message : msg.message || old.message,
             status: msg.status != null ? msg.status : old.status,
           };
         }
